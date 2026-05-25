@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-socketio
+motor
+pandas
+scikit-learn
+pinecone
+python-dotenv
+pydantic
+sentence-transformers
+groq
