@@ -26,23 +26,26 @@ def validate_decision(severity: str, action: str, confidence: float, affected_se
     
     # Check 1: Is the action in the safety allowlist?
     if action not in APPROVED_ACTIONS:
-        return False, f"Action '{action}' is not in the APPROVED_ACTIONS allowlist."
+        return "REQUIRES_APPROVAL", f"Action '{action}' is not in the APPROVED_ACTIONS allowlist."
         
     # Check 2: Confidence Threshold
+    # 1. Low confidence -> Escalated (AI cannot confidently solve it)
     if confidence < 0.85:
-        return False, f"AI Confidence ({confidence}) is below the required 0.85 threshold."
+        return "ESCALATED", f"LLM Confidence ({confidence}) too low. Human intervention required."
         
-    # Check 3: Severity Gate (Only auto-recover Critical or Major incidents)
-    if severity not in ["Critical", "Major"]:
-        return False, f"Automated recovery requires Critical/Major severity, got {severity}."
-        
+    # 2. Safety Rule -> Requires Approval (AI can solve it, but needs permission)
+    if "db-service" in affected_services and severity == "Critical":
+        if "RESTART" in action or "FAILOVER" in action:
+            return "REQUIRES_APPROVAL", "Requires manual approval for Critical Database operations."
+
     # Check 4: Recovery Cooldown Protection (Prevent Infinite Restart Loops)
     if action == "RESTART_SERVICE":
         for svc in affected_services:
             if service_restart_counts.get(svc, 0) >= MAX_RECOVERIES:
-                return False, f"Cooldown triggered: {svc} has exceeded {MAX_RECOVERIES} automated restarts."
-                
-    return True, "Approved by Decision Engine."
+                return "REQUIRES_APPROVAL", f"Cooldown triggered: {svc} has exceeded {MAX_RECOVERIES} automated restarts."
+            
+    # 3. Otherwise -> Approved (AI solves automatically)
+    return "APPROVED", "Action approved by Safety Rules."
 
 def log_recovery_execution(services: list):
     """Called when a recovery actually executes to update cooldown counters."""

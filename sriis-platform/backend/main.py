@@ -256,9 +256,25 @@ async def process_new_incident(anomalies):
         except Exception as e:
             print(f"Groq API Error: {e}")
             
-    # 3. Decision Engine Validation
-    is_approved, reason = engine_decision.validate_decision(severity, action, confidence, list(services))
+    # 3. Safety Validation
+    decision, reason = engine_decision.validate_decision(severity, action, confidence, list(services))
     
+    is_approved = (decision == "APPROVED")
+    
+    if decision == "APPROVED":
+        initial_status = "Recovering"
+        action_status = "Approved (Automated)"
+    elif decision == "REQUIRES_APPROVAL":
+        initial_status = "Active"
+        action_status = "Requires Human Approval"
+    else: # ESCALATED
+        initial_status = "Escalated"
+        action_status = "AI Could Not Solve"
+        action = "MANUAL_INVESTIGATION"
+
+    incident_id = f"INC-{int(datetime.utcnow().timestamp())}"
+    
+    # 5. Insert into MongoDB
     # Run distributed correlation analysis
     correlation_data = await engine_correlation.infer_cascading_failures(anomalies)
 
@@ -271,8 +287,8 @@ async def process_new_incident(anomalies):
         "recommended_action": action,
         "executed_action": action if is_approved else None,
         "confidence_score": confidence,
-        "status": "Active",
-        "action_status": "Approved (Automated)" if is_approved else "Rejected by Safety Engine",
+        "status": initial_status,
+        "action_status": action_status,
         "validation_reason": reason,
         "root_dependency": correlation_data.get("root_dependency", "unknown"),
         "cascading_chain": correlation_data.get("cascading_chain", []),

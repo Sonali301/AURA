@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import random
 import engine_simulator
 
 # Simulated Global Infrastructure State
@@ -118,14 +119,18 @@ async def validate_recovery(incident_id, db, sio):
     time_threshold = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
     recent_anomalies = await db.logs.count_documents({"is_anomaly": True, "ingested_at": {"$gte": time_threshold}})
     
-    if recent_anomalies < 2:
+    # Add a 30% chance for the fix to "fail" validation to show off the Escalated state
+    if recent_anomalies < 2 and random.random() > 0.3:
         # Success!
         final_status = "Resolved"
         final_event = "Validation successful! Anomalies ceased."
     else:
         # Failure!
         final_status = "Escalated"
-        final_event = f"Validation failed! {recent_anomalies} anomalies still detecting. Escalating to human."
+        if recent_anomalies < 2:
+            final_event = "Validation failed! Secondary health checks failing. Escalating to human."
+        else:
+            final_event = f"Validation failed! {recent_anomalies} anomalies still detecting. Escalating to human."
         
     final_time = datetime.datetime.now().strftime("%I:%M %p")
     await sio.emit("recovery_event", {"incident_id": incident_id, "event": final_event, "time": final_time})

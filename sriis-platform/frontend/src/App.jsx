@@ -1,12 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
-import IncidentRelationshipGraph from './components/IncidentRelationshipGraph';
-import SimulationControlPanel from './components/SimulationControlPanel';
-import IncidentHistoryPanel from './components/IncidentHistoryPanel';
-import ReplayCenter from './components/ReplayCenter';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Activity, ShieldCheck, ActivitySquare } from 'lucide-react';
+
+// New Components
+import Sidebar from './components/Sidebar';
+import Topbar from './components/Topbar';
+import KPICards from './components/KPICards';
+import LiveLogTerminal from './components/LiveLogTerminal';
+import IncidentTimeline from './components/IncidentTimeline';
+import SimulationControlPanel from './components/SimulationControlPanel';
+
+// Existing Components
+import IncidentRelationshipGraph from './components/IncidentRelationshipGraph';
+import ReplayCenter from './components/ReplayCenter';
 
 function App() {
+  const [activeRoute, setActiveRoute] = useState('dashboard');
   const [logs, setLogs] = useState([]);
   const [metricData, setMetricData] = useState([]);
   const [incidents, setIncidents] = useState([]);
@@ -21,7 +31,6 @@ function App() {
     let interval;
     let isMounted = true;
 
-    // Connect socket immediately so it can listen for backend availability
     const socket = io('http://localhost:8000');
 
     const hydrateState = async () => {
@@ -60,9 +69,7 @@ function App() {
       }
     };
 
-    // Auto-hydrate whenever the backend starts or reconnects!
     socket.on('connect', () => {
-      console.log('Connected to backend, hydrating state...');
       hydrateState();
     });
 
@@ -99,7 +106,6 @@ function App() {
       }));
     });
 
-    // Calculate metrics and update chart every second
     interval = setInterval(() => {
       const reqPerSec = logStats.current.count;
       const errRate = reqPerSec > 0 ? ((logStats.current.errorCount / reqPerSec) * 100).toFixed(1) : 0;
@@ -109,14 +115,13 @@ function App() {
       setMetricData((prev) => {
         const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
         const newData = [...prev, { time: timeStr, value: reqPerSec }];
-        return newData.slice(-60); // Keep last 60 ticks for a better history window
+        return newData.slice(-60);
       });
 
-      // Batch update the logs to prevent React from freezing
       if (logBuffer.current.length > 0) {
-        const newLogs = [...logBuffer.current].reverse(); // newest first
+        const newLogs = [...logBuffer.current].reverse();
         setLogs((prev) => [...newLogs, ...prev].slice(0, 100));
-        logBuffer.current = []; // Clear buffer
+        logBuffer.current = [];
       }
 
       logStats.current = { count: 0, errorCount: 0 };
@@ -134,8 +139,12 @@ function App() {
       .catch(err => console.error("Failed to send heal request:", err));
   };
 
+  const activeIncidentsCount = incidents.filter(i => i.status !== 'Resolved').length;
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6 relative">
+    <div className="flex h-screen overflow-hidden bg-cyber-bg text-gray-200 relative selection:bg-neon-cyan/30">
+      
+      {/* Replay Overlay */}
       {replayIncidentId && (
         <ReplayCenter 
           incidentId={replayIncidentId} 
@@ -143,195 +152,115 @@ function App() {
         />
       )}
 
-      <header className="mb-6 border-b border-gray-800 pb-4 flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-bold text-blue-400">SRIIS</h1>
-          <p className="text-gray-400">Self-Reasoning Incident Intelligence System</p>
-        </div>
-        <div className="text-xs font-mono text-gray-500 bg-gray-900 px-3 py-1 rounded border border-gray-800">
-          Advanced Distributed Intelligence Mode
-        </div>
-      </header>
+      {/* Modular Layout */}
+      <Sidebar activeRoute={activeRoute} setActiveRoute={setActiveRoute} />
+      
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        <Topbar />
+        
+        <main className="flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col space-y-6">
+          <KPICards metrics={metrics} activeIncidentsCount={activeIncidentsCount} />
 
-      <SimulationControlPanel />
+          {/* Top Section: Simulation, Traffic, Topology (Left) + Live Logs (Right) */}
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 shrink-0">
+            
+            {/* Left Column (Main Data & Graphs) */}
+            <div className="xl:col-span-2 flex flex-col space-y-6">
+              <div className="shrink-0">
+                <SimulationControlPanel />
+              </div>
+              
+              {/* Traffic & Canary Dual Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
+                
+                {/* Traffic Monitor */}
+                <div className="glass-panel border border-white/5 rounded-xl p-5 h-72">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
+                    <Activity className="mr-2 text-neon-cyan" size={14} /> Network Traffic Monitor
+                  </h3>
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={metricData}>
+                        <defs>
+                          <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#00f0ff" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="#00f0ff" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
+                        <XAxis dataKey="time" stroke="#4b5563" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
+                        <YAxis stroke="#4b5563" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: 'rgba(10,10,15,0.9)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px' }}
+                          itemStyle={{ color: '#00f0ff' }}
+                        />
+                        <Line type="monotone" dataKey="value" stroke="#00f0ff" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: '#00f0ff' }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column: Metrics & Graph */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg">
-              <h3 className="text-gray-400 text-sm">Requests / sec</h3>
-              <p className="text-2xl font-bold text-green-400">{metrics.requestsPerSec}</p>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg">
-              <h3 className="text-gray-400 text-sm">Error Rate</h3>
-              <p className="text-2xl font-bold text-yellow-400">{metrics.errorRate}%</p>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg">
-              <h3 className="text-gray-400 text-sm">Active Incidents</h3>
-              <p className={`text-2xl font-bold ${incidents.length > 0 ? 'text-red-500' : 'text-gray-500'}`}>
-                {incidents.length}
-              </p>
-            </div>
-          </div>
-
-          {/* AI Incident Reports */}
-          {incidents.length > 0 && (
-            <div className="bg-red-950/20 border border-red-900/50 p-6 rounded-lg space-y-4">
-              <h2 className="text-xl font-bold text-red-400 flex items-center">
-                🚨 Autonomous Recovery Engine
-              </h2>
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {incidents.map((inc) => (
-                  <div key={inc.incident_id} className="bg-gray-900 border border-red-900/30 p-4 rounded-lg">
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center space-x-3">
-                        <h3 className="font-bold text-gray-200">Incident: {inc.incident_id.split('-')[0]}</h3>
-                        <span className={`px-2 py-1 rounded text-xs font-bold uppercase flex items-center ${
-                          inc.status === 'Resolved' ? 'bg-green-900/50 text-green-400' :
-                          inc.status === 'Recovering' || inc.status === 'Validating' ? 'bg-blue-900/50 text-blue-400' :
-                          'bg-red-900/50 text-red-400'
-                        }`}>
-                          {(inc.status === 'Recovering' || inc.status === 'Validating') && (
-                            <svg className="animate-spin -ml-1 mr-2 h-3 w-3 text-blue-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                          )}
-                          {inc.status || 'Active'}
-                        </span>
+                {/* Canary Health Gauges */}
+                <div className="glass-panel border border-white/5 rounded-xl p-5 h-72 flex flex-col">
+                  <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
+                    <ShieldCheck className="mr-2 text-neon-purple" size={14} /> Deployment Health (Canary V2)
+                  </h3>
+                  <div className="flex-1 grid grid-cols-2 gap-4">
+                    <div className="bg-black/40 border border-white/5 rounded-lg flex flex-col items-center justify-center relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-gradient-to-t from-neon-green/5 to-transparent"></div>
+                      <h4 className="text-[10px] text-gray-500 uppercase tracking-widest mb-2 z-10">Stable Cluster</h4>
+                      <div className={`text-4xl font-mono font-bold z-10 ${canaryMetrics.stable_health > 90 ? 'text-neon-green drop-shadow-[0_0_8px_rgba(0,255,102,0.5)]' : canaryMetrics.stable_health > 70 ? 'text-yellow-400' : 'text-neon-pink'}`}>
+                        {canaryMetrics.stable_health}%
                       </div>
-                      <span className="bg-red-900/50 text-red-400 px-2 py-1 rounded text-xs font-bold uppercase">
-                        {inc.severity}
-                      </span>
+                      <span className="text-[10px] text-gray-500 mt-2 z-10 font-mono">ERR RATE: {canaryMetrics.stable_error_rate}%</span>
                     </div>
-                    <div className="mb-3 text-sm text-gray-400">
-                      <span className="font-semibold">Affected Services:</span> {inc.affected_services.join(', ')}
-                    </div>
-                    <div className="space-y-3">
-                      <div className="bg-gray-950 p-3 rounded border border-gray-800">
-                        <h4 className="text-xs font-bold text-blue-400 mb-1 uppercase tracking-wider">Root Cause Analysis (Groq)</h4>
-                        <p className="text-sm text-gray-300 leading-relaxed">{inc.root_cause}</p>
-                      </div>
-                      
-                      <div className="bg-green-950/20 p-3 rounded border border-green-900/30 flex justify-between items-center">
-                        <div>
-                          <h4 className="text-xs font-bold text-green-400 mb-1 uppercase tracking-wider">AI Recommended Action</h4>
-                          <p className="text-sm text-gray-300 font-medium">
-                            {inc.recommended_action || inc.recovery_action} 
-                            {inc.confidence_score && <span className="ml-2 text-xs text-gray-500">(Confidence: {Math.round(inc.confidence_score * 100)}%)</span>}
-                          </p>
-                        </div>
-                        {(!inc.executed_action && inc.status === 'Active') && (
-                          <button 
-                            onClick={() => handleHeal(inc.incident_id)}
-                            className="bg-green-600 hover:bg-green-500 text-white text-xs font-bold py-1 px-3 rounded shadow"
-                          >
-                            Heal System (Approve)
-                          </button>
-                        )}
-                      </div>
 
-                      {/* Autonomous Timeline */}
-                      {inc.timeline_events && inc.timeline_events.length > 0 && (
-                        <div className="mt-4 pt-3 border-t border-gray-800">
-                          <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-wider">Autonomous Action Timeline</h4>
-                          <div className="space-y-1">
-                            {inc.timeline_events.map((ev, i) => (
-                              <div key={i} className="flex text-xs">
-                                <span className="text-gray-500 w-16 shrink-0">{ev.time}</span>
-                                <span className={`${ev.event.includes('Approved') || ev.event.includes('successful') ? 'text-green-400' : ev.event.includes('Rejected') || ev.event.includes('failed') ? 'text-red-400' : 'text-blue-300'}`}>
-                                  → {ev.event}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                    <div className="bg-black/40 border border-white/5 rounded-lg flex flex-col items-center justify-center relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-gradient-to-t from-neon-purple/5 to-transparent"></div>
+                      <h4 className="text-[10px] text-neon-purple uppercase tracking-widest mb-2 z-10 font-bold">Canary Traffic</h4>
+                      <div className={`text-4xl font-mono font-bold z-10 ${canaryMetrics.canary_health > 90 ? 'text-neon-purple drop-shadow-[0_0_8px_rgba(176,38,255,0.5)]' : canaryMetrics.canary_health > 70 ? 'text-yellow-400' : 'text-neon-pink'}`}>
+                        {canaryMetrics.canary_health}%
+                      </div>
+                      <span className="text-[10px] text-gray-500 mt-2 z-10 font-mono">ERR RATE: {canaryMetrics.canary_error_rate}%</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
+                </div>
 
-          {/* Canary Health Dashboard */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg flex flex-col items-center">
-              <h3 className="text-gray-400 text-sm mb-2">Stable Health</h3>
-              <div className={`text-4xl font-bold ${canaryMetrics.stable_health > 90 ? 'text-green-400' : canaryMetrics.stable_health > 70 ? 'text-yellow-400' : 'text-red-400'}`}>
-                {canaryMetrics.stable_health}%
               </div>
-              <div className="text-xs text-gray-500 mt-2">Error Rate: {canaryMetrics.stable_error_rate}%</div>
-            </div>
-            <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg flex flex-col items-center">
-              <h3 className="text-gray-400 text-sm mb-2 text-purple-400">Canary Health (V2)</h3>
-              <div className={`text-4xl font-bold ${canaryMetrics.canary_health > 90 ? 'text-green-400' : canaryMetrics.canary_health > 70 ? 'text-yellow-400' : 'text-red-400'}`}>
-                {canaryMetrics.canary_health}%
+
+              {/* Service Graph (Moved above Timeline) */}
+              <div className="glass-panel border border-white/5 rounded-xl overflow-hidden h-[350px] shrink-0 flex flex-col relative">
+                 <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-lg">
+                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center">
+                      <ActivitySquare className="mr-2 text-neon-cyan" size={14} /> Distributed Service Topology
+                    </h3>
+                 </div>
+                 <IncidentRelationshipGraph incidents={incidents} />
               </div>
-              <div className="text-xs text-gray-500 mt-2">Error Rate: {canaryMetrics.canary_error_rate}%</div>
+
             </div>
+
+            {/* Right Column (Logs) */}
+            <div className="xl:col-span-1 relative min-h-[300px]">
+              {/* Live Logs - strictly bounds to the exact height of left column */}
+              <div className="absolute inset-0">
+                <LiveLogTerminal logs={logs} />
+              </div>
+            </div>
+
           </div>
 
-          <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg h-64">
-            <h3 className="text-gray-400 text-sm mb-4">Traffic Monitor</h3>
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={metricData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-                <XAxis dataKey="time" stroke="#9CA3AF" />
-                <YAxis stroke="#9CA3AF" />
-                <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: 'none' }} />
-                <Line type="monotone" dataKey="value" stroke="#3B82F6" strokeWidth={2} dot={false} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          
-          <IncidentRelationshipGraph incidents={incidents} />
-        </div>
-
-        {/* Right Column: Live Logs & History */}
-        <div className="flex flex-col space-y-6 h-full min-h-[800px]">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex flex-col flex-1">
-            <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center">
-              <h3 className="font-semibold text-gray-200">Live Log Stream</h3>
-              <div className="flex items-center space-x-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                </span>
-                <span className="text-xs text-gray-400 font-mono">LIVE</span>
-              </div>
-            </div>
-            <div className="p-4 overflow-y-auto flex-1 space-y-2 font-mono text-sm max-h-[500px]">
-              {logs.length === 0 ? (
-                <p className="text-gray-500 italic">Waiting for logs...</p>
-              ) : (
-                logs.map((log, idx) => (
-                  <div key={idx} className="border-b border-gray-800 pb-2">
-                    <span className="text-gray-500 mr-2">{log.timestamp.split(' ')[1]}</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold mr-2 ${
-                      log.level === 'INFO' ? 'bg-blue-900/50 text-blue-400' :
-                      log.level === 'WARNING' ? 'bg-yellow-900/50 text-yellow-400' :
-                      log.level === 'ERROR' ? 'bg-red-900/50 text-red-400' :
-                      'bg-red-600 text-white'
-                    }`}>
-                      {log.level}
-                    </span>
-                    <span className="text-purple-400 mr-2">[{log.service}]</span>
-                    <span className="text-gray-300">{log.message}</span>
-                  </div>
-                ))
-              )}
+          {/* Bottom Section: Incident Timeline (Full Width) */}
+          <div className="flex-1 min-h-[600px] w-full">
+            <div className="glass-panel border border-white/5 rounded-xl overflow-hidden h-full flex flex-col relative">
+              <IncidentTimeline 
+                incidents={incidents} 
+                onHeal={handleHeal} 
+                onReplay={(id) => setReplayIncidentId(id)} 
+              />
             </div>
           </div>
-          
-          <div className="h-96">
-            <IncidentHistoryPanel 
-              incidents={incidents} 
-              onReplay={(id) => setReplayIncidentId(id)} 
-            />
-          </div>
-        </div>
+        </main>
       </div>
     </div>
   );

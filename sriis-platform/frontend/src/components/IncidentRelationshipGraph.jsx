@@ -1,100 +1,150 @@
-import React, { useMemo } from 'react';
-import ReactFlow, { Background, Controls, MarkerType } from 'reactflow';
-import 'reactflow/dist/style.css';
+import React, { useMemo, useRef, useEffect, useState } from 'react';
+import ForceGraph2D from 'react-force-graph-2d';
 
 export default function IncidentRelationshipGraph({ incidents = [] }) {
-  const { nodes, edges } = useMemo(() => {
-    // Get the most recent incident with correlation data
+  const containerRef = useRef();
+  const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
+
+  useEffect(() => {
+    if (containerRef.current) {
+      const { clientWidth, clientHeight } = containerRef.current;
+      setDimensions({ width: clientWidth, height: clientHeight });
+    }
+    
+    const handleResize = () => {
+      if (containerRef.current) {
+        setDimensions({
+          width: containerRef.current.clientWidth,
+          height: containerRef.current.clientHeight
+        });
+      }
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const graphData = useMemo(() => {
     const activeIncident = incidents.find(inc => inc.cascading_chain && inc.cascading_chain.length > 0);
     
     if (!activeIncident) {
-      // Default static state if no correlation data
+      // Default stable topology
       return {
         nodes: [
-          { id: '1', position: { x: 250, y: 50 }, data: { label: 'DB Service' }, style: { backgroundColor: '#1F2937', color: 'white' } },
-          { id: '2', position: { x: 250, y: 150 }, data: { label: 'API Gateway' }, style: { backgroundColor: '#1F2937', color: 'white' } },
-          { id: '3', position: { x: 250, y: 250 }, data: { label: 'Auth Service' }, style: { backgroundColor: '#1F2937', color: 'white' } },
-          { id: '4', position: { x: 250, y: 350 }, data: { label: 'Frontend' }, style: { backgroundColor: '#1F2937', color: 'white' } },
+          { id: 'DB Service', group: 'database', val: 20 },
+          { id: 'API Gateway', group: 'gateway', val: 25 },
+          { id: 'Auth Service', group: 'auth', val: 20 },
+          { id: 'Frontend', group: 'client', val: 15 },
+          { id: 'Payment Service', group: 'service', val: 15 },
         ],
-        edges: [
-          { id: 'e1-2', source: '1', target: '2', style: { stroke: '#4B5563' } },
-          { id: 'e2-3', source: '2', target: '3', style: { stroke: '#4B5563' } },
-          { id: 'e3-4', source: '3', target: '4', style: { stroke: '#4B5563' } },
+        links: [
+          { source: 'Frontend', target: 'API Gateway' },
+          { source: 'API Gateway', target: 'Auth Service' },
+          { source: 'API Gateway', target: 'DB Service' },
+          { source: 'API Gateway', target: 'Payment Service' },
+          { source: 'Auth Service', target: 'DB Service' },
+          { source: 'Payment Service', target: 'DB Service' },
         ]
       };
     }
 
     const { cascading_chain, root_dependency } = activeIncident;
-    const newNodes = [];
-    const newEdges = [];
+    const nodes = [];
+    const links = [];
     const addedNodes = new Set();
     
-    let yPos = 50;
-    
-    const addNode = (serviceId) => {
-      if (addedNodes.has(serviceId)) return;
-      addedNodes.add(serviceId);
-      
-      const isRoot = serviceId === root_dependency;
-      
-      newNodes.push({
-        id: serviceId,
-        position: { x: 250, y: yPos },
-        data: { label: isRoot ? `🔥 ROOT CAUSE: ${serviceId}` : serviceId },
-        style: isRoot ? {
-          backgroundColor: '#991b1b', // dark red
-          border: '2px solid #ef4444', // glowing red border
-          color: 'white',
-          fontWeight: 'bold',
-          boxShadow: '0 0 20px rgba(239, 68, 68, 0.6)'
-        } : {
-          backgroundColor: '#374151',
-          border: '1px solid #eab308', // warning yellow
-          color: 'white'
-        }
-      });
-      yPos += 120;
+    const addNode = (id) => {
+      if (!addedNodes.has(id)) {
+        addedNodes.add(id);
+        const isRoot = id === root_dependency;
+        nodes.push({
+          id,
+          isRoot,
+          isAffected: true,
+          val: isRoot ? 35 : 25
+        });
+      }
     };
 
-    cascading_chain.forEach((link, idx) => {
+    cascading_chain.forEach(link => {
       addNode(link.source);
       addNode(link.target);
-      
-      // The edge thickness is weighted by confidence
-      const thickness = Math.max(1, link.confidence * 4);
-      
-      newEdges.push({
-        id: `e-${link.source}-${link.target}`,
+      links.push({
         source: link.source,
         target: link.target,
-        animated: true,
-        label: `${Math.round(link.confidence * 100)}% conf.`,
-        labelStyle: { fill: '#ef4444', fontWeight: 700, fontSize: 12 },
-        labelBgStyle: { fill: '#1F2937', color: '#fff', fillOpacity: 0.8 },
-        style: { stroke: '#ef4444', strokeWidth: thickness },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' }
+        confidence: link.confidence,
+        isCascade: true
       });
     });
 
-    return { nodes: newNodes, edges: newEdges };
+    return { nodes, links };
   }, [incidents]);
 
   return (
-    <div className="w-full h-96 border border-gray-800 rounded-lg bg-gray-900 shadow-xl overflow-hidden relative">
-      <div className="p-3 bg-gray-800 border-b border-gray-700 font-semibold text-white flex justify-between">
-        <span>Distributed Intelligence Correlation</span>
-        {incidents.length > 0 && incidents[0].cascading_chain?.length > 0 && (
-          <span className="text-xs bg-red-900/50 text-red-400 px-2 py-1 rounded border border-red-800 animate-pulse">
-            Live Cascading Failure Detected
+    <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-transparent rounded-xl">
+      
+      {/* Live Cascade Indicator */}
+      {incidents.length > 0 && incidents[0].cascading_chain?.length > 0 && (
+        <div className="absolute top-4 right-4 z-10 bg-red-950/80 border border-red-500/50 px-3 py-1.5 rounded-lg flex items-center space-x-2">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
           </span>
-        )}
-      </div>
-      <div className="h-full w-full">
-        <ReactFlow nodes={nodes} edges={edges} fitView>
-          <Background color="#374151" gap={16} />
-          <Controls className="bg-gray-800 border-gray-700 fill-white" />
-        </ReactFlow>
-      </div>
+          <span className="text-[10px] text-red-400 font-bold uppercase tracking-widest animate-pulse">
+            Cascading Failure Detected
+          </span>
+        </div>
+      )}
+
+      <ForceGraph2D
+        width={dimensions.width}
+        height={dimensions.height}
+        graphData={graphData}
+        backgroundColor="rgba(0,0,0,0)" // transparent
+        
+        // Node styling
+        nodeRelSize={6}
+        nodeColor={node => {
+          if (node.isRoot) return '#ff0055'; // neon pink
+          if (node.isAffected) return '#ffaa00'; // warning orange
+          return '#00f0ff'; // neon cyan (stable)
+        }}
+        nodeCanvasObject={(node, ctx, globalScale) => {
+          const label = node.id;
+          const fontSize = 12/globalScale;
+          
+          // Draw Glowing Node
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, node.val ? Math.sqrt(node.val)*2 : 8, 0, 2 * Math.PI, false);
+          ctx.fillStyle = node.isRoot ? '#ff0055' : node.isAffected ? '#ffaa00' : '#00f0ff';
+          
+          // Glow effect
+          ctx.shadowBlur = 15;
+          ctx.shadowColor = ctx.fillStyle;
+          ctx.fill();
+          
+          // Reset shadow for text
+          ctx.shadowBlur = 0;
+
+          // Draw Text
+          ctx.font = `bold ${fontSize}px "Courier New", monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(label, node.x, node.y + (node.val ? Math.sqrt(node.val)*2 + 6 : 14));
+        }}
+
+        // Edge styling
+        linkColor={link => link.isCascade ? '#ff0055' : 'rgba(0, 240, 255, 0.2)'}
+        linkWidth={link => link.isCascade ? Math.max(2, link.confidence * 4) : 1}
+        linkDirectionalParticles={link => link.isCascade ? 4 : 2}
+        linkDirectionalParticleSpeed={link => link.isCascade ? 0.015 : 0.005}
+        linkDirectionalParticleWidth={link => link.isCascade ? 4 : 2}
+        linkDirectionalParticleColor={link => link.isCascade ? '#ff0055' : '#00f0ff'}
+        
+        // Physics
+        d3VelocityDecay={0.3}
+      />
     </div>
   );
 }

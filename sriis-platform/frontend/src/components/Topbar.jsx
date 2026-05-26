@@ -1,0 +1,49 @@
+import React from 'react';
+import { motion } from 'framer-motion';
+import { BrainCircuit, Activity, ShieldCheck, Cpu } from 'lucide-react';
+
+export default function Topbar() {
+  return (
+    <div className="h-16 border-b border-white/5 glass-panel flex items-center justify-between px-6 sticky top-0 z-40 shrink-0">
+      
+      {/* Search / Breadcrumb (Simulated) */}
+      <div className="flex items-center text-gray-400 text-sm font-mono tracking-wider">
+        <span className="text-neon-cyan/70">SRIIS</span>
+        <span className="mx-2 text-gray-600">/</span>
+        <span className="text-white">Global Command</span>
+      </div>
+
+      {/* AI Status Banner */}
+      <div className="flex items-center space-x-6">
+        
+        {/* Recovery Engine Status */}
+        <div className="flex items-center space-x-2 bg-green-950/30 border border-green-500/20 px-3 py-1.5 rounded-full shadow-[0_0_10px_rgba(0,255,102,0.1)]">
+          <ShieldCheck size={14} className="text-neon-green" />
+          <span className="text-xs font-bold text-neon-green tracking-wide">Recovery Engine Active</span>
+        </div>
+
+        {/* AI Operational Pulse */}
+        <div className="flex items-center space-x-2 bg-blue-950/30 border border-neon-cyan/20 px-3 py-1.5 rounded-full relative overflow-hidden group">
+          {/* Scanning effect */}
+          <motion.div 
+            className="absolute top-0 bottom-0 w-8 bg-neon-cyan/20 blur-md skew-x-[-20deg]"
+            animate={{ left: ['-100%', '200%'] }}
+            transition={{ duration: 3, ease: 'linear', repeat: Infinity, repeatDelay: 2 }}
+          />
+          <BrainCircuit size={14} className="text-neon-cyan relative z-10 group-hover:animate-pulse" />
+          <span className="text-xs font-bold text-neon-cyan tracking-wide relative z-10">AI Operational</span>
+        </div>
+        
+        {/* Resource Monitor Mini */}
+        <div className="flex items-center space-x-3 pl-4 border-l border-white/10 text-gray-400">
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-gray-500">Latency</span>
+            <span className="text-xs font-mono font-bold text-gray-200">12ms</span>
+          </div>
+          <Cpu size={16} className="text-gray-500" />
+        </div>
+
+      </div>
+    </div>
+  );
+}

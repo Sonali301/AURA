@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { TerminalSquare, AlertTriangle, ShieldAlert, Zap, Cpu, Flame } from 'lucide-react';
 
-const SimulationControlPanel = () => {
+const scenarios = [
+  { id: 'db-timeout', label: 'DB Timeout', icon: ShieldAlert, color: 'neon-pink', hoverClass: 'hover:bg-neon-pink/20 hover:border-neon-pink/50 hover:shadow-[0_0_15px_rgba(255,0,85,0.4)]' },
+  { id: 'api-crash', label: 'API Crash', icon: Flame, color: 'orange-500', hoverClass: 'hover:bg-orange-500/20 hover:border-orange-500/50 hover:shadow-[0_0_15px_rgba(249,115,22,0.4)]' },
+  { id: 'canary-failure', label: 'Canary Failure', icon: Cpu, color: 'neon-purple', hoverClass: 'hover:bg-neon-purple/20 hover:border-neon-purple/50 hover:shadow-[0_0_15px_rgba(176,38,255,0.4)]' },
+  { id: 'latency-spike', label: 'Latency Spike', icon: Zap, color: 'yellow-400', hoverClass: 'hover:bg-yellow-400/20 hover:border-yellow-400/50 hover:shadow-[0_0_15px_rgba(250,204,21,0.4)]' },
+  { id: 'auth-failure', label: 'Auth Brute-Force', icon: AlertTriangle, color: 'neon-pink', hoverClass: 'hover:bg-neon-pink/20 hover:border-neon-pink/50 hover:shadow-[0_0_15px_rgba(255,0,85,0.4)]' },
+  { id: 'traffic-surge', label: 'Traffic Surge', icon: Activity => <Zap size={18} />, color: 'neon-cyan', hoverClass: 'hover:bg-neon-cyan/20 hover:border-neon-cyan/50 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)]' }
+];
+
+export default function SimulationControlPanel() {
   const [severity, setSeverity] = useState('critical');
   const [duration, setDuration] = useState(20);
   const [activeSimulation, setActiveSimulation] = useState(null);
@@ -13,7 +24,7 @@ const SimulationControlPanel = () => {
       body: JSON.stringify({ severity, duration })
     })
       .then(res => res.json())
-      .then(data => {
+      .then(() => {
         setTimeout(() => setActiveSimulation(null), duration * 1000);
       })
       .catch(err => {
@@ -22,67 +33,83 @@ const SimulationControlPanel = () => {
       });
   };
 
-  const scenarios = [
-    { id: 'db-timeout', label: 'DB Timeout', color: 'red' },
-    { id: 'api-crash', label: 'API Crash', color: 'orange' },
-    { id: 'canary-failure', label: 'Canary Failure', color: 'purple' },
-    { id: 'latency-spike', label: 'Latency Spike', color: 'yellow' },
-    { id: 'auth-failure', label: 'Auth Brute-Force', color: 'pink' },
-    { id: 'traffic-surge', label: 'Traffic Surge', color: 'blue' }
-  ];
-
   return (
-    <div className="bg-gray-900 border border-gray-800 p-4 rounded-lg mb-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-gray-200 font-bold flex items-center">
-          <span className="mr-2">🕹️</span> Failure Injection System
-        </h3>
-        <div className="flex space-x-6 text-sm">
-          <div className="flex items-center space-x-2">
-            <label className="text-gray-400">Severity:</label>
+    <div className="glass-panel border border-white/5 p-5 rounded-xl mb-6 relative overflow-hidden">
+      {/* Background Warning Stripes if active */}
+      {activeSimulation && (
+        <div className="absolute inset-0 opacity-10 pointer-events-none" 
+             style={{ backgroundImage: 'repeating-linear-gradient(45deg, #ff0055 0px, #ff0055 10px, transparent 10px, transparent 20px)' }}>
+        </div>
+      )}
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 relative z-10">
+        <div className="flex items-center space-x-3 mb-4 md:mb-0">
+          <TerminalSquare size={20} className="text-neon-cyan" />
+          <h3 className="text-gray-100 font-bold uppercase tracking-widest text-sm font-mono drop-shadow-[0_0_8px_rgba(0,240,255,0.5)]">
+            Chaos Engineering Command Center
+          </h3>
+        </div>
+
+        <div className="flex space-x-4 text-xs font-mono">
+          <div className="flex flex-col space-y-1">
+            <label className="text-gray-500 uppercase tracking-widest text-[9px]">Impact Level</label>
             <select 
               value={severity} 
               onChange={(e) => setSeverity(e.target.value)}
-              className="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1"
+              className="bg-black/60 border border-white/10 text-white rounded px-3 py-1.5 focus:border-neon-cyan focus:outline-none focus:shadow-[0_0_10px_rgba(0,240,255,0.3)] transition-all cursor-pointer"
             >
-              <option value="warning">Warning</option>
-              <option value="major">Major</option>
-              <option value="critical">Critical</option>
+              <option value="warning">WARNING</option>
+              <option value="major">MAJOR</option>
+              <option value="critical">CRITICAL</option>
             </select>
           </div>
-          <div className="flex items-center space-x-2">
-            <label className="text-gray-400">Duration (s):</label>
+          <div className="flex flex-col space-y-1">
+            <label className="text-gray-500 uppercase tracking-widest text-[9px]">Chaos Duration (sec)</label>
             <input 
               type="number" 
               value={duration} 
               onChange={(e) => setDuration(parseInt(e.target.value))}
-              className="bg-gray-800 border border-gray-700 text-white rounded px-2 py-1 w-16"
+              className="bg-black/60 border border-white/10 text-white rounded px-3 py-1.5 w-20 focus:border-neon-cyan focus:outline-none focus:shadow-[0_0_10px_rgba(0,240,255,0.3)] transition-all"
               min="5" max="60"
             />
           </div>
         </div>
       </div>
       
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-        {scenarios.map(s => (
-          <button
-            key={s.id}
-            onClick={() => simulateFailure(s.id)}
-            disabled={activeSimulation !== null}
-            className={`py-2 px-3 rounded text-xs font-bold transition-all ${
-              activeSimulation === s.id 
-                ? 'bg-green-600 text-white animate-pulse' 
-                : activeSimulation 
-                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                  : `bg-${s.color}-900/40 text-${s.color}-400 hover:bg-${s.color}-800/60 border border-${s.color}-800/50`
-            }`}
-          >
-            {activeSimulation === s.id ? 'Injecting...' : s.label}
-          </button>
-        ))}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
+        {scenarios.map(s => {
+          const isActive = activeSimulation === s.id;
+          const isDisabled = activeSimulation !== null && !isActive;
+          const Icon = typeof s.icon === 'function' ? Zap : s.icon; // Quick fix for traffic surge
+
+          return (
+            <motion.button
+              key={s.id}
+              whileHover={!isDisabled && !isActive ? { scale: 1.02, y: -2 } : {}}
+              whileTap={!isDisabled ? { scale: 0.95 } : {}}
+              onClick={() => simulateFailure(s.id)}
+              disabled={activeSimulation !== null}
+              className={`relative py-3 px-4 rounded-lg flex flex-col items-center justify-center space-y-2 text-xs font-bold font-mono transition-all duration-300 overflow-hidden ${
+                isActive 
+                  ? 'bg-red-950/80 border-red-500 text-white shadow-[0_0_20px_rgba(255,0,85,0.6)]' 
+                  : isDisabled 
+                    ? 'bg-black/40 border-white/5 text-gray-600 cursor-not-allowed'
+                    : `bg-black/60 border-white/10 text-gray-300 cursor-pointer ${s.hoverClass}`
+              } border`}
+            >
+              {isActive && (
+                <motion.div 
+                  className="absolute inset-0 bg-red-500/20"
+                  animate={{ opacity: [0.2, 0.5, 0.2] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                />
+              )}
+              <Icon size={18} className={`relative z-10 ${isActive ? 'text-white' : `text-${s.color}`}`} />
+              <span className="relative z-10 text-center tracking-wider text-[10px] uppercase">{isActive ? 'Injecting...' : s.label}</span>
+            </motion.button>
+          );
+        })}
       </div>
     </div>
   );
-};
-
-export default SimulationControlPanel;
+}
