@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import engine_simulator
 
 # Simulated Global Infrastructure State
 infrastructure_state = {
@@ -14,6 +15,24 @@ infrastructure_state = {
         "frontend": "HEALTHY"
     }
 }
+
+async def initialize_state(db):
+    """Loads infrastructure state from MongoDB on startup."""
+    global infrastructure_state
+    state_doc = await db.system_state.find_one({"_id": "infrastructure"})
+    if state_doc:
+        infrastructure_state = state_doc.get("state", infrastructure_state)
+    else:
+        await persist_state(db)
+
+async def persist_state(db):
+    """Saves infrastructure state to MongoDB."""
+    if db is not None:
+        await db.system_state.update_one(
+            {"_id": "infrastructure"},
+            {"$set": {"state": infrastructure_state}},
+            upsert=True
+        )
 
 async def execute_recovery_workflow(incident, db, sio):
     """
@@ -48,19 +67,26 @@ async def execute_recovery_workflow(incident, db, sio):
             infrastructure_state["service_health"][svc] = "RESTARTING"
             await sio.emit("recovery_event", {"incident_id": incident_id, "event": f"Simulating restart of {svc}...", "time": datetime.datetime.now().strftime("%I:%M %p")})
             
+        await persist_state(db)
         await asyncio.sleep(4) # Simulate downtime
+        engine_simulator.clear_active_failure() # ACTUALLY FIX THE ERRORS
         
         for svc in services:
             infrastructure_state["service_health"][svc] = "HEALTHY"
+            
+        await persist_state(db)
             
     elif action == "ROLLBACK_CANARY":
         await sio.emit("recovery_event", {"incident_id": incident_id, "event": "Rerouting 100% traffic to stable environment...", "time": datetime.datetime.now().strftime("%I:%M %p")})
         infrastructure_state["traffic_distribution"]["stable"] = 100
         infrastructure_state["traffic_distribution"]["canary"] = 0
+        await persist_state(db)
         await asyncio.sleep(2)
+        engine_simulator.clear_active_failure() # ACTUALLY FIX THE ERRORS
         
     elif action == "REROUTE_TRAFFIC":
         await asyncio.sleep(2)
+        engine_simulator.clear_active_failure() # ACTUALLY FIX THE ERRORS
         
     # 3. Transition to Validating phase
     val_event = "Action executed. Entering 15s validation phase..."
@@ -85,10 +111,11 @@ async def validate_recovery(incident_id, db, sio):
     Waits 15 seconds, then checks if the error rate dropped.
     Simulates validation by simply checking recent anomalies.
     """
+    # Wait 15 seconds, but only check anomalies from the LAST 10 seconds to avoid injection overlap
     await asyncio.sleep(15)
     
-    # Check anomalies in the last 15 seconds
-    time_threshold = datetime.datetime.utcnow() - datetime.timedelta(seconds=15)
+    # Check anomalies in the last 10 seconds (after recovery finished)
+    time_threshold = datetime.datetime.utcnow() - datetime.timedelta(seconds=10)
     recent_anomalies = await db.logs.count_documents({"is_anomaly": True, "ingested_at": {"$gte": time_threshold}})
     
     if recent_anomalies < 2:
@@ -118,3 +145,15 @@ async def validate_recovery(incident_id, db, sio):
     
     # Trigger Pinecone Memory Update (Handled back in main.py ideally, but can emit an event)
     await sio.emit("trigger_memory_update", {"incident_id": incident_id, "final_status": final_status})
+
+async def recover_pending_validations(db, sio):
+    """
+    Called on FastAPI startup. Finds any incidents that were stuck in "Validating"
+    because the backend restarted, and immediately finishes their validation.
+    """
+    cursor = db.incidents.find({"status": "Validating"})
+    pending = await cursor.to_list(length=100)
+    for incident in pending:
+        incident_id = incident["incident_id"]
+        print(f"🔄 Recovering interrupted validation task for incident: {incident_id}")
+        asyncio.create_task(validate_recovery(incident_id, db, sio))

@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import IncidentRelationshipGraph from './components/IncidentRelationshipGraph';
+import SimulationControlPanel from './components/SimulationControlPanel';
+import IncidentHistoryPanel from './components/IncidentHistoryPanel';
+import ReplayCenter from './components/ReplayCenter';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 function App() {
@@ -9,45 +12,59 @@ function App() {
   const [incidents, setIncidents] = useState([]);
   const [canaryMetrics, setCanaryMetrics] = useState({ stable_health: 100, canary_health: 100, stable_error_rate: 0, canary_error_rate: 0 });
   const [metrics, setMetrics] = useState({ requestsPerSec: 0, errorRate: 0 });
+  const [replayIncidentId, setReplayIncidentId] = useState(null);
+  
   const logStats = useRef({ count: 0, errorCount: 0 });
   const logBuffer = useRef([]);
 
   useEffect(() => {
-    // Initialize socket inside useEffect to guarantee fresh connection
+    let interval;
+    let isMounted = true;
+
+    // Connect socket immediately so it can listen for backend availability
     const socket = io('http://localhost:8000');
 
-    // Fetch historical incidents on load
-    fetch('http://localhost:8000/api/incidents')
-      .then(res => res.json())
-      .then(data => {
-        if (Array.isArray(data)) {
-          setIncidents(data);
+    const hydrateState = async () => {
+      try {
+        const [incRes, logsRes, statusRes, metricRes] = await Promise.all([
+          fetch('http://localhost:8000/api/incidents'),
+          fetch('http://localhost:8000/api/logs/recent'),
+          fetch('http://localhost:8000/api/system/status'),
+          fetch('http://localhost:8000/api/metrics/history')
+        ]);
+
+        const incData = await incRes.json();
+        const logsData = await logsRes.json();
+        const statusData = await statusRes.json();
+        const metricHistory = await metricRes.json();
+
+        if (!isMounted) return;
+
+        if (Array.isArray(incData)) setIncidents(incData);
+        if (Array.isArray(logsData)) setLogs(logsData);
+        if (statusData && Object.keys(statusData).length > 0) {
+          setCanaryMetrics({
+            stable_health: statusData.stable_health !== undefined ? statusData.stable_health : 100,
+            canary_health: statusData.canary_health !== undefined ? statusData.canary_health : 100,
+            stable_error_rate: statusData.stable_error_rate || 0,
+            canary_error_rate: statusData.canary_error_rate || 0
+          });
         }
-      })
-      .catch(err => console.error("Failed to fetch incidents:", err));
-
-    // Calculate metrics and update chart every second
-    const interval = setInterval(() => {
-      const reqPerSec = logStats.current.count;
-      const errRate = reqPerSec > 0 ? ((logStats.current.errorCount / reqPerSec) * 100).toFixed(1) : 0;
-      
-      setMetrics({ requestsPerSec: reqPerSec, errorRate: errRate });
-      
-      setMetricData((prev) => {
-        const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
-        const newData = [...prev, { time: timeStr, value: reqPerSec }];
-        return newData.slice(-20);
-      });
-
-      // Batch update the logs to prevent React from freezing
-      if (logBuffer.current.length > 0) {
-        const newLogs = [...logBuffer.current].reverse(); // newest first
-        setLogs((prev) => [...newLogs, ...prev].slice(0, 100));
-        logBuffer.current = []; // Clear buffer
+        if (Array.isArray(metricHistory) && metricHistory.length > 0) {
+          setMetricData(metricHistory);
+          const latest = metricHistory[metricHistory.length - 1];
+          setMetrics({ requestsPerSec: latest.value, errorRate: latest.error_rate || 0 });
+        }
+      } catch (err) {
+        console.error("Hydration failed:", err);
       }
+    };
 
-      logStats.current = { count: 0, errorCount: 0 };
-    }, 1000);
+    // Auto-hydrate whenever the backend starts or reconnects!
+    socket.on('connect', () => {
+      console.log('Connected to backend, hydrating state...');
+      hydrateState();
+    });
 
     socket.on('new_log', (log) => {
       logBuffer.current.push(log);
@@ -82,9 +99,33 @@ function App() {
       }));
     });
 
+    // Calculate metrics and update chart every second
+    interval = setInterval(() => {
+      const reqPerSec = logStats.current.count;
+      const errRate = reqPerSec > 0 ? ((logStats.current.errorCount / reqPerSec) * 100).toFixed(1) : 0;
+      
+      setMetrics({ requestsPerSec: reqPerSec, errorRate: errRate });
+      
+      setMetricData((prev) => {
+        const timeStr = new Date().toLocaleTimeString('en-US', { hour12: false });
+        const newData = [...prev, { time: timeStr, value: reqPerSec }];
+        return newData.slice(-60); // Keep last 60 ticks for a better history window
+      });
+
+      // Batch update the logs to prevent React from freezing
+      if (logBuffer.current.length > 0) {
+        const newLogs = [...logBuffer.current].reverse(); // newest first
+        setLogs((prev) => [...newLogs, ...prev].slice(0, 100));
+        logBuffer.current = []; // Clear buffer
+      }
+
+      logStats.current = { count: 0, errorCount: 0 };
+    }, 1000);
+
     return () => {
-      clearInterval(interval);
-      socket.disconnect();
+      isMounted = false;
+      if (interval) clearInterval(interval);
+      if (socket) socket.disconnect();
     };
   }, []);
 
@@ -94,11 +135,25 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-6">
-      <header className="mb-8 border-b border-gray-800 pb-4">
-        <h1 className="text-3xl font-bold text-blue-400">SRIIS</h1>
-        <p className="text-gray-400">Self-Reasoning Incident Intelligence System</p>
+    <div className="min-h-screen bg-gray-950 text-white p-6 relative">
+      {replayIncidentId && (
+        <ReplayCenter 
+          incidentId={replayIncidentId} 
+          onClose={() => setReplayIncidentId(null)} 
+        />
+      )}
+
+      <header className="mb-6 border-b border-gray-800 pb-4 flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold text-blue-400">SRIIS</h1>
+          <p className="text-gray-400">Self-Reasoning Incident Intelligence System</p>
+        </div>
+        <div className="text-xs font-mono text-gray-500 bg-gray-900 px-3 py-1 rounded border border-gray-800">
+          Advanced Distributed Intelligence Mode
+        </div>
       </header>
+
+      <SimulationControlPanel />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Metrics & Graph */}
@@ -231,34 +286,50 @@ function App() {
             </ResponsiveContainer>
           </div>
           
-          <IncidentRelationshipGraph />
+          <IncidentRelationshipGraph incidents={incidents} />
         </div>
 
-        {/* Right Column: Live Logs */}
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex flex-col h-full min-h-[800px]">
-          <div className="bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <h3 className="font-semibold text-gray-200">Live Log Stream</h3>
+        {/* Right Column: Live Logs & History */}
+        <div className="flex flex-col space-y-6 h-full min-h-[800px]">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden flex flex-col flex-1">
+            <div className="bg-gray-800 px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+              <h3 className="font-semibold text-gray-200">Live Log Stream</h3>
+              <div className="flex items-center space-x-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span className="text-xs text-gray-400 font-mono">LIVE</span>
+              </div>
+            </div>
+            <div className="p-4 overflow-y-auto flex-1 space-y-2 font-mono text-sm max-h-[500px]">
+              {logs.length === 0 ? (
+                <p className="text-gray-500 italic">Waiting for logs...</p>
+              ) : (
+                logs.map((log, idx) => (
+                  <div key={idx} className="border-b border-gray-800 pb-2">
+                    <span className="text-gray-500 mr-2">{log.timestamp.split(' ')[1]}</span>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold mr-2 ${
+                      log.level === 'INFO' ? 'bg-blue-900/50 text-blue-400' :
+                      log.level === 'WARNING' ? 'bg-yellow-900/50 text-yellow-400' :
+                      log.level === 'ERROR' ? 'bg-red-900/50 text-red-400' :
+                      'bg-red-600 text-white'
+                    }`}>
+                      {log.level}
+                    </span>
+                    <span className="text-purple-400 mr-2">[{log.service}]</span>
+                    <span className="text-gray-300">{log.message}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
-          <div className="p-4 overflow-y-auto flex-1 space-y-2 font-mono text-sm">
-            {logs.length === 0 ? (
-              <p className="text-gray-500 italic">Waiting for logs...</p>
-            ) : (
-              logs.map((log, idx) => (
-                <div key={idx} className="border-b border-gray-800 pb-2">
-                  <span className="text-gray-500 mr-2">{log.timestamp}</span>
-                  <span className={`px-2 py-0.5 rounded text-xs font-bold mr-2 ${
-                    log.level === 'INFO' ? 'bg-blue-900/50 text-blue-400' :
-                    log.level === 'WARNING' ? 'bg-yellow-900/50 text-yellow-400' :
-                    log.level === 'ERROR' ? 'bg-red-900/50 text-red-400' :
-                    'bg-red-600 text-white'
-                  }`}>
-                    {log.level}
-                  </span>
-                  <span className="text-purple-400 mr-2">[{log.service}]</span>
-                  <span className="text-gray-300">{log.message}</span>
-                </div>
-              ))
-            )}
+          
+          <div className="h-96">
+            <IncidentHistoryPanel 
+              incidents={incidents} 
+              onReplay={(id) => setReplayIncidentId(id)} 
+            />
           </div>
         </div>
       </div>

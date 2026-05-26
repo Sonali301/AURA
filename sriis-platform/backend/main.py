@@ -21,9 +21,15 @@ from groq import AsyncGroq
 import engine_decision
 import engine_recovery
 import engine_canary
+import engine_simulator
+import engine_correlation
+import engine_replay
 
 # Load environment variables
 load_dotenv()
+
+# Global Boot Time to track session length for smart frontend hydration
+SERVER_START_TIME = datetime.utcnow()
 
 # Initialize FastAPI
 app = FastAPI(title="SRIIS Backend", version="1.0.0")
@@ -49,6 +55,36 @@ groq_client = None
 
 log_window = deque(maxlen=200) 
 
+global_req_count = 0
+global_err_count = 0
+
+async def metrics_tracking_loop():
+    global global_req_count, global_err_count
+    print("🔄 Starting Background Metrics Tracking Loop...")
+    while True:
+        await asyncio.sleep(1)
+        if db is not None:
+            req_per_sec = global_req_count
+            err_rate = (global_err_count / req_per_sec * 100) if req_per_sec > 0 else 0
+            
+            time_str = datetime.now().strftime("%H:%M:%S")
+            point = {"time": time_str, "value": req_per_sec, "error_rate": round(err_rate, 1)}
+            
+            # Atomic update to keep exactly 60 items without slow count/delete queries
+            await db.system_state.update_one(
+                {"_id": "metrics_history"},
+                {"$push": {
+                    "history": {
+                        "$each": [point],
+                        "$slice": -60
+                    }
+                }},
+                upsert=True
+            )
+            
+            global_req_count = 0
+            global_err_count = 0
+
 @app.on_event("startup")
 async def startup_event():
     global pc, index, db, client, embedder, groq_client
@@ -69,6 +105,11 @@ async def startup_event():
             client = AsyncIOMotorClient(MONGO_URI)
             db = client.get_database("sriis_db")
             print("✅ Connected to MongoDB")
+            
+            # Initialize persistent operational state & recovery jobs
+            await engine_recovery.initialize_state(db)
+            await engine_recovery.recover_pending_validations(db, sio)
+            
         except Exception as e:
             print(f"❌ MongoDB Error: {e}")
             
@@ -84,6 +125,8 @@ async def startup_event():
     # Start background aggregation tasks
     asyncio.create_task(incident_aggregation_loop())
     asyncio.create_task(engine_canary.canary_monitoring_loop(sio))
+    asyncio.create_task(engine_simulator.simulator_loop())
+    asyncio.create_task(metrics_tracking_loop())
 
 
 class LogEntry(BaseModel):
@@ -115,10 +158,17 @@ async def detect_anomaly(log: LogEntry):
 
 @app.post("/api/logs/ingest")
 async def ingest_log(log: LogEntry):
+    global global_req_count, global_err_count
+    
     is_anomaly = await detect_anomaly(log)
+    is_err = log.level in ["ERROR", "CRITICAL"] or is_anomaly
+    
+    global_req_count += 1
+    if is_err:
+        global_err_count += 1
     
     # Record for Canary/Stable tracking
-    engine_canary.record_log(log.environment, is_error=(log.level in ["ERROR", "CRITICAL"] or is_anomaly))
+    engine_canary.record_log(log.environment, is_error=is_err)
     
     log_payload = log.dict()
     log_payload["is_anomaly"] = is_anomaly
@@ -201,33 +251,37 @@ async def process_new_incident(anomalies):
             response_json = json.loads(completion.choices[0].message.content)
             rca = response_json.get("root_cause", "Unknown")
             action = response_json.get("recommended_action", "MONITOR_ONLY")
-            confidence = float(response_json.get("confidence", 0.0))
+            llm_json = response_json
+            confidence = llm_json.get("confidence", 0.0)
         except Exception as e:
             print(f"Groq API Error: {e}")
             
     # 3. Decision Engine Validation
-    is_approved, reason = engine_decision.validate_decision(severity, action, confidence, services)
-    action_status = "Approved" if is_approved else "Rejected"
+    is_approved, reason = engine_decision.validate_decision(severity, action, confidence, list(services))
     
-    # 4. Save to MongoDB (Extended Phase 5 Schema)
+    # Run distributed correlation analysis
+    correlation_data = await engine_correlation.infer_cascading_failures(anomalies)
+
     incident_doc = {
         "incident_id": incident_id,
         "created_at": datetime.utcnow(),
-        "status": "Active",
         "severity": severity,
-        "affected_services": services,
+        "affected_services": list(services),
         "root_cause": rca,
         "recommended_action": action,
         "executed_action": action if is_approved else None,
         "confidence_score": confidence,
-        "action_status": action_status,
+        "status": "Active",
+        "action_status": "Approved (Automated)" if is_approved else "Rejected by Safety Engine",
         "validation_reason": reason,
+        "root_dependency": correlation_data.get("root_dependency", "unknown"),
+        "cascading_chain": correlation_data.get("cascading_chain", []),
+        "correlation_confidence": correlation_data.get("correlation_confidence", 0.0),
         "trigger_logs": [str(a["_id"]) for a in anomalies],
         "timeline_events": [
             {"time": datetime.now().strftime("%I:%M %p"), "event": f"Critical incident created"}
         ]
     }
-    
     if is_approved:
         incident_doc["timeline_events"].append({"time": datetime.now().strftime("%I:%M %p"), "event": f"Decision Engine Approved: {action}"})
     else:
@@ -235,7 +289,7 @@ async def process_new_incident(anomalies):
         
     await db.incidents.insert_one(incident_doc.copy())
     
-    # 4. Upsert to Pinecone for future memory (Applying User's Recommended Metadata & Combined Context!)
+    # 4. Upsert to Pinecone for future memory
     combined_text = f"{severity} incident: {current_summary} Affected services: {', '.join(services)}. Recovery action: {action}"
     upsert_vector = embedder.encode(combined_text).tolist()
     
@@ -279,10 +333,17 @@ async def incident_aggregation_loop():
 
 @app.get("/api/incidents")
 async def get_incidents():
-    """Fetch the latest 10 incidents for the dashboard on load"""
+    """Fetch incidents for the dashboard: 10 historical + all session incidents"""
     if db is not None:
-        cursor = db.incidents.find().sort("created_at", -1).limit(10)
-        incidents = await cursor.to_list(length=10)
+        # 1. Count how many incidents were created during this session
+        session_incidents = await db.incidents.count_documents({"created_at": {"$gte": SERVER_START_TIME}})
+        
+        # 2. Limit is the 10 historical ones + all the new ones (capped at 100)
+        fetch_limit = min(100, 10 + session_incidents)
+        
+        cursor = db.incidents.find().sort("created_at", -1).limit(fetch_limit)
+        incidents = await cursor.to_list(length=fetch_limit)
+            
         for i in incidents:
             if "_id" in i:
                 i["_id"] = str(i["_id"])
@@ -290,6 +351,83 @@ async def get_incidents():
                 i["created_at"] = i["created_at"].isoformat()
         return incidents
     return []
+        
+@app.get("/api/logs/recent")
+async def get_recent_logs():
+    """Fetch logs for UI hydration: 10 historical + all session logs"""
+    if db is not None:
+        # 1. Count how many logs were created during this session
+        session_logs = await db.logs.count_documents({"ingested_at": {"$gte": SERVER_START_TIME}})
+        
+        # 2. Limit is 10 historical + all new ones (capped at 100)
+        fetch_limit = min(100, 10 + session_logs)
+        
+        cursor = db.logs.find({}, {"_id": 0}).sort("ingested_at", -1).limit(fetch_limit)
+        logs = await cursor.to_list(length=fetch_limit)
+            
+        return logs[::-1]
+    return []
+
+@app.get("/api/system/status")
+async def get_system_status():
+    """Fetch persistent system health and metrics"""
+    if db is not None:
+        active_incidents = await db.incidents.count_documents({"status": "Active"})
+        active_recoveries = await db.incidents.count_documents({"status": {"$in": ["Recovering", "Validating"]}})
+        
+        stable_count = engine_canary.canary_metrics["stable_count"]
+        canary_count = engine_canary.canary_metrics["canary_count"]
+        stable_err = engine_canary.canary_metrics["stable_errors"]
+        canary_err = engine_canary.canary_metrics["canary_errors"]
+        
+        stable_err_rate = (stable_err / stable_count * 100) if stable_count > 0 else 0
+        canary_err_rate = (canary_err / canary_count * 100) if canary_count > 0 else 0
+        
+        stable_health = max(0, 100 - stable_err_rate)
+        canary_health = max(0, 100 - canary_err_rate)
+        
+        mode = "NORMAL"
+        if active_incidents > 0:
+            mode = "DEGRADED"
+        if active_recoveries > 0:
+            mode = "RECOVERING"
+            
+        return {
+            "stable_health": round(stable_health, 1),
+            "canary_health": round(canary_health, 1),
+            "stable_error_rate": round(stable_err_rate, 1),
+            "canary_error_rate": round(canary_err_rate, 1),
+            "traffic_distribution": engine_recovery.infrastructure_state["traffic_distribution"],
+            "active_incidents": active_incidents,
+            "system_mode": mode
+        }
+    return {}
+
+@app.get("/api/metrics/history")
+async def get_metrics_history():
+    """Fetch rolling metrics for traffic chart rendering"""
+    if db is not None:
+        doc = await db.system_state.find_one({"_id": "metrics_history"})
+        if doc and "history" in doc:
+            return doc["history"]
+    return []
+    return []
+
+@app.post("/api/simulate/{scenario}")
+async def trigger_simulation(scenario: str, payload: dict = None):
+    """
+    Manually inject deterministic failures.
+    Scenarios: db-timeout, api-crash, canary-failure, latency-spike, auth-failure, traffic-surge
+    """
+    severity = payload.get("severity", "critical") if payload else "critical"
+    duration = payload.get("duration", 20) if payload else 20
+    
+    valid_scenarios = ["db-timeout", "api-crash", "canary-failure", "latency-spike", "auth-failure", "traffic-surge"]
+    if scenario not in valid_scenarios:
+        return {"error": "Invalid simulation scenario", "valid_options": valid_scenarios}
+        
+    result = await engine_simulator.trigger_failure(scenario, severity, duration)
+    return result
 
 @app.post("/api/incidents/{incident_id}/heal")
 async def manual_heal_incident(incident_id: str):
@@ -322,9 +460,31 @@ async def manual_heal_incident(incident_id: str):
 async def connect(sid, environ):
     pass
 
-@sio.on('disconnect')
-async def disconnect(sid):
-    pass
+@sio.on("disconnect")
+async def handle_disconnect(sid):
+    print(f"Client disconnected: {sid}")
+
+# --- REPLAY NAMESPACE EVENTS ---
+@sio.on("connect", namespace="/replay")
+async def handle_replay_connect(sid, environ):
+    print(f"Replay client connected: {sid}")
+
+@sio.on("start_replay", namespace="/replay")
+async def handle_start_replay(sid, data):
+    incident_id = data.get("incident_id")
+    speed = float(data.get("speed", 1.0))
+    if incident_id:
+        asyncio.create_task(engine_replay.start_replay(incident_id, speed, db, sio))
+
+@sio.on("stop_replay", namespace="/replay")
+async def handle_stop_replay(sid, data):
+    incident_id = data.get("incident_id")
+    if incident_id:
+        await engine_replay.stop_replay(incident_id)
+
+@sio.on("disconnect", namespace="/replay")
+async def handle_replay_disconnect(sid):
+    print(f"Replay client disconnected: {sid}")
 
 if __name__ == "__main__":
     uvicorn.run("main:socket_app", host="0.0.0.0", port=8000, reload=True)
