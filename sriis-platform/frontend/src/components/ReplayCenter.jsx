@@ -61,6 +61,14 @@ const ReplayCenter = ({ incidentId, onClose }) => {
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           className="w-full max-w-6xl glass-panel border border-white/10 rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden flex flex-col h-[90vh] relative"
         >
+          {/* REPLAY MODE OVERLAY */}
+          <div className="absolute top-6 left-1/2 transform -translate-x-1/2 flex flex-col items-center z-50 pointer-events-none">
+            <div className="bg-red-950/80 border border-red-500/50 px-8 py-2 rounded-full shadow-[0_0_30px_rgba(255,0,0,0.4)] animate-pulse flex items-center space-x-3 backdrop-blur-md">
+              <div className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_10px_rgba(255,0,0,1)]"></div>
+              <span className="text-red-400 font-bold tracking-[0.3em] uppercase text-sm">Forensic Replay Mode Active</span>
+            </div>
+          </div>
+
           {/* Neon Top Glow */}
           <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-neon-cyan to-transparent opacity-50"></div>
 

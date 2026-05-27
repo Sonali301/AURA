@@ -9,10 +9,9 @@ const navItems = [
   { id: 'intelligence', label: 'AI Intelligence', icon: BrainCircuit },
   { id: 'canary', label: 'Canary Monitor', icon: Activity },
   { id: 'simulation', label: 'Simulation', icon: Terminal },
-  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
-export default function Sidebar({ activeRoute, setActiveRoute }) {
+export default function Sidebar({ activeRoute, setActiveRoute, isConnected = true, activeIncidentsCount = 0, onBackToLanding }) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -42,6 +41,17 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
 
       {/* Navigation */}
       <div className="flex-1 py-6 px-3 flex flex-col space-y-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
+        
+        {/* Back to Landing Page Button */}
+        <button
+          onClick={onBackToLanding}
+          className="flex items-center px-3 py-3 rounded-lg text-neon-purple hover:bg-neon-purple/10 hover:shadow-[0_0_15px_rgba(176,38,255,0.2)] transition-all mb-4 border border-transparent hover:border-neon-purple/30 group"
+          title={collapsed ? "Exit to Landing Page" : ""}
+        >
+          <ChevronLeft size={22} className="shrink-0 group-hover:text-white transition-colors" />
+          {!collapsed && <span className="ml-3 font-medium font-mono text-xs uppercase tracking-widest whitespace-nowrap group-hover:text-white transition-colors">Exit Command</span>}
+        </button>
+
         {navItems.map((item) => {
           const isActive = activeRoute === item.id;
           const Icon = item.icon;
@@ -80,13 +90,17 @@ export default function Sidebar({ activeRoute, setActiveRoute }) {
       <div className="p-4 border-t border-white/5">
         <div className={`flex items-center justify-center ${!collapsed && 'justify-start space-x-3'} p-2 rounded-lg bg-black/40`}>
           <div className="relative flex h-3 w-3 shrink-0">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-neon-green opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-neon-green shadow-[0_0_8px_rgba(0,255,102,1)]"></span>
+            <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${!isConnected ? 'bg-neon-pink' : activeIncidentsCount > 0 ? 'bg-yellow-400' : 'bg-neon-green'}`}></span>
+            <span className={`relative inline-flex rounded-full h-3 w-3 ${!isConnected ? 'bg-neon-pink shadow-[0_0_8px_rgba(255,0,85,1)]' : activeIncidentsCount > 0 ? 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,1)]' : 'bg-neon-green shadow-[0_0_8px_rgba(0,255,102,1)]'}`}></span>
           </div>
           {!collapsed && (
             <div className="flex flex-col whitespace-nowrap">
-              <span className="text-xs text-gray-300 font-bold">System Nominal</span>
-              <span className="text-[10px] text-gray-500 font-mono">Uptime: 99.99%</span>
+              <span className={`text-xs font-bold ${!isConnected ? 'text-neon-pink' : activeIncidentsCount > 0 ? 'text-yellow-400' : 'text-gray-300'}`}>
+                {!isConnected ? 'System Offline' : activeIncidentsCount > 0 ? 'Active Incident(s)' : 'System Nominal'}
+              </span>
+              <span className={`text-[10px] font-mono ${!isConnected ? 'text-neon-pink/70' : activeIncidentsCount > 0 ? 'text-yellow-400/70' : 'text-gray-500'}`}>
+                {!isConnected ? 'Uptime: DEGRADED' : activeIncidentsCount > 0 ? 'SLA AT RISK' : 'Uptime: 99.99%'}
+              </span>
             </div>
           )}
         </div>

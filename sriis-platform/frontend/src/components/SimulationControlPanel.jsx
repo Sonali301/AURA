@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TerminalSquare, AlertTriangle, ShieldAlert, Zap, Cpu, Flame } from 'lucide-react';
+import { TerminalSquare, AlertTriangle, ShieldAlert, Zap, Cpu, Flame, ServerCrash } from 'lucide-react';
 
 const scenarios = [
   { id: 'db-timeout', label: 'DB Timeout', icon: ShieldAlert, color: 'neon-pink', hoverClass: 'hover:bg-neon-pink/20 hover:border-neon-pink/50 hover:shadow-[0_0_15px_rgba(255,0,85,0.4)]' },
@@ -42,26 +42,28 @@ export default function SimulationControlPanel() {
         </div>
       )}
 
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-5 relative z-10">
-        <div className="flex items-center space-x-3 mb-4 md:mb-0">
-          <TerminalSquare size={20} className="text-neon-cyan" />
-          <h3 className="text-gray-100 font-bold uppercase tracking-widest text-sm font-mono drop-shadow-[0_0_8px_rgba(0,240,255,0.5)]">
-            Chaos Engineering Command Center
-          </h3>
-        </div>
+      {/* Danger glow background */}
+      <div className="absolute inset-0 bg-gradient-to-br from-neon-pink/5 to-transparent pointer-events-none" />
+      <div className="absolute -top-10 -right-10 w-32 h-32 bg-neon-pink/20 blur-[50px] rounded-full pointer-events-none group-hover:bg-neon-pink/30 transition-colors" />
 
-        <div className="flex space-x-4 text-xs font-mono">
+      <h3 className="text-xs font-bold text-gray-200 uppercase tracking-wider mb-4 flex items-center relative z-10">
+        <ServerCrash className="mr-2 text-neon-pink" size={14} /> Chaos Engineering Console
+      </h3>
+      
+      <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 mb-5 relative z-10">
           <div className="flex flex-col space-y-1">
-            <label className="text-gray-500 uppercase tracking-widest text-[9px]">Impact Level</label>
-            <select 
-              value={severity} 
-              onChange={(e) => setSeverity(e.target.value)}
-              className="bg-black/60 border border-white/10 text-white rounded px-3 py-1.5 focus:border-neon-cyan focus:outline-none focus:shadow-[0_0_10px_rgba(0,240,255,0.3)] transition-all cursor-pointer"
-            >
-              <option value="warning">WARNING</option>
-              <option value="major">MAJOR</option>
-              <option value="critical">CRITICAL</option>
-            </select>
+            <label className="block text-[10px] uppercase font-bold tracking-widest text-gray-500 mb-2">Impact Level</label>
+            <div className="relative">
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-neon-pink/50 appearance-none transition-colors"
+              >
+                <option value="warning">WARNING</option>
+                <option value="major">MAJOR</option>
+                <option value="critical">CRITICAL</option>
+              </select>
+            </div>
           </div>
           <div className="flex flex-col space-y-1">
             <label className="text-gray-500 uppercase tracking-widest text-[9px]">Chaos Duration (sec)</label>
@@ -74,7 +76,6 @@ export default function SimulationControlPanel() {
             />
           </div>
         </div>
-      </div>
       
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
         {scenarios.map(s => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
+import { motion } from 'framer-motion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Activity, ShieldCheck, ActivitySquare } from 'lucide-react';
 
@@ -7,15 +8,20 @@ import { Activity, ShieldCheck, ActivitySquare } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import KPICards from './components/KPICards';
+import DashboardMetrics from './components/DashboardMetrics';
+import BlastRadiusGraph from './components/BlastRadiusGraph';
 import LiveLogTerminal from './components/LiveLogTerminal';
 import IncidentTimeline from './components/IncidentTimeline';
 import SimulationControlPanel from './components/SimulationControlPanel';
+import LandingPage from './components/LandingPage';
+import BootSequence from './components/BootSequence';
 
 // Existing Components
 import IncidentRelationshipGraph from './components/IncidentRelationshipGraph';
 import ReplayCenter from './components/ReplayCenter';
 
 function App() {
+  const [appView, setAppView] = useState('landing'); // 'landing' | 'booting' | 'dashboard'
   const [activeRoute, setActiveRoute] = useState('dashboard');
   const [logs, setLogs] = useState([]);
   const [metricData, setMetricData] = useState([]);
@@ -23,6 +29,7 @@ function App() {
   const [canaryMetrics, setCanaryMetrics] = useState({ stable_health: 100, canary_health: 100, stable_error_rate: 0, canary_error_rate: 0 });
   const [metrics, setMetrics] = useState({ requestsPerSec: 0, errorRate: 0 });
   const [replayIncidentId, setReplayIncidentId] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
   
   const logStats = useRef({ count: 0, errorCount: 0 });
   const logBuffer = useRef([]);
@@ -70,7 +77,12 @@ function App() {
     };
 
     socket.on('connect', () => {
+      setIsConnected(true);
       hydrateState();
+    });
+
+    socket.on('disconnect', () => {
+      setIsConnected(false);
     });
 
     socket.on('new_log', (log) => {
@@ -141,8 +153,29 @@ function App() {
 
   const activeIncidentsCount = incidents.filter(i => i.status !== 'Resolved').length;
 
+  if (appView === 'landing') {
+    return (
+      <LandingPage 
+        onLaunch={() => setAppView('booting')} 
+        onReplayLaunch={() => {
+          setReplayIncidentId('INC-DEMO-999');
+          setAppView('booting');
+        }}
+      />
+    );
+  }
+
+  if (appView === 'booting') {
+    return <BootSequence onComplete={() => setAppView('dashboard')} />;
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-cyber-bg text-gray-200 relative selection:bg-neon-cyan/30">
+    <motion.div 
+      initial={{ opacity: 0 }} 
+      animate={{ opacity: 1 }} 
+      transition={{ duration: 1 }}
+      className="flex h-screen overflow-hidden bg-cyber-bg text-gray-200 relative selection:bg-neon-cyan/30"
+    >
       
       {/* Replay Overlay */}
       {replayIncidentId && (
@@ -153,13 +186,25 @@ function App() {
       )}
 
       {/* Modular Layout */}
-      <Sidebar activeRoute={activeRoute} setActiveRoute={setActiveRoute} />
+      <Sidebar 
+        activeRoute={activeRoute} 
+        setActiveRoute={setActiveRoute} 
+        isConnected={isConnected} 
+        activeIncidentsCount={activeIncidentsCount}
+        onBackToLanding={() => setAppView('landing')}
+      />
       
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        <Topbar />
+        <Topbar isConnected={isConnected} />
         
-        <main className="flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col space-y-6">
-          <KPICards metrics={metrics} activeIncidentsCount={activeIncidentsCount} />
+        <main className={`flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col space-y-6 transition-all duration-700 ${replayIncidentId ? 'blur-md opacity-30 pointer-events-none grayscale sepia-[.2] hue-rotate-[320deg]' : ''}`}>
+          {activeRoute === 'dashboard' ? (
+            <>
+              {/* Row 1: KPI Metrics (Hardware + AI) */}
+              <div className="flex flex-col space-y-4 w-full">
+                <KPICards metrics={metrics} incidents={incidents} />
+                <DashboardMetrics systemStatus={canaryMetrics} incidents={incidents} />
+              </div>
 
           {/* Top Section: Simulation, Traffic, Topology (Left) + Live Logs (Right) */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 shrink-0">
@@ -228,14 +273,9 @@ function App() {
 
               </div>
 
-              {/* Service Graph (Moved above Timeline) */}
+              {/* Service Graph (Blast Radius Live) */}
               <div className="glass-panel border border-white/5 rounded-xl overflow-hidden h-[350px] shrink-0 flex flex-col relative">
-                 <div className="absolute top-4 left-4 z-10 bg-black/60 backdrop-blur border border-white/10 px-3 py-1.5 rounded-lg">
-                    <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center">
-                      <ActivitySquare className="mr-2 text-neon-cyan" size={14} /> Distributed Service Topology
-                    </h3>
-                 </div>
-                 <IncidentRelationshipGraph incidents={incidents} />
+                 <BlastRadiusGraph activeIncidents={incidents.filter(i => i.status !== 'Resolved')} />
               </div>
 
             </div>
@@ -260,9 +300,39 @@ function App() {
               />
             </div>
           </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center glass-panel border border-white/5 rounded-xl min-h-[600px] text-center p-8">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 bg-neon-cyan/20 blur-xl rounded-full animate-pulse"></div>
+                <ActivitySquare size={64} className="text-neon-cyan relative z-10 opacity-80" />
+              </div>
+              <h2 className="text-3xl font-bold text-white tracking-widest mb-2 capitalize">
+                {activeRoute.replace('-', ' ')}
+              </h2>
+              <p className="text-gray-400 max-w-md">
+                This module is currently offline for routine maintenance. The full {activeRoute.replace('-', ' ')} experience will be unlocked in the V2 production release.
+              </p>
+              <button 
+                onClick={() => setActiveRoute('dashboard')}
+                className="mt-8 px-6 py-2 bg-neon-cyan/10 hover:bg-neon-cyan/20 border border-neon-cyan/50 text-neon-cyan rounded-lg transition-all font-mono text-sm uppercase tracking-wider"
+              >
+                Return to Dashboard
+              </button>
+            </div>
+          )}
         </main>
+        
+        {/* Footer */}
+        <div className="h-8 border-t border-white/5 flex items-center justify-between px-6 shrink-0 bg-black/80 font-mono text-[9px] text-gray-500 uppercase tracking-widest z-40">
+          <span className="flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-neon-green mr-2 animate-pulse"></span>
+            AI CORE ONLINE • VECTOR MEMORY SYNCHRONIZED
+          </span>
+          <span>SRIIS NOC v2.0.0</span>
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
 

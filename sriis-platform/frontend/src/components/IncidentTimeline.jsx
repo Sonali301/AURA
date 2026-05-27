@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, CheckCircle, AlertOctagon, ShieldAlert, Zap, BrainCircuit, Filter } from 'lucide-react';
+import AutonomousDecisionTrace from './AutonomousDecisionTrace';
 
 export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
   const [filter, setFilter] = useState('All');
@@ -67,6 +68,7 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
               
               const statusColor = isResolved ? 'text-neon-green' : isEscalated ? 'text-neon-pink' : isActive ? 'text-yellow-400' : 'text-neon-cyan';
               const borderColor = isResolved ? 'border-neon-green/30' : isEscalated ? 'border-neon-pink/50 neon-glow-red' : isActive ? 'border-yellow-400/50 neon-glow-yellow' : 'border-neon-cyan/30 neon-glow-cyan';
+              const glowEffect = isResolved ? 'shadow-[0_0_15px_rgba(0,255,102,0.3)]' : isEscalated ? 'shadow-[0_0_15px_rgba(255,0,85,0.4)]' : isActive ? 'shadow-[0_0_15px_rgba(250,204,21,0.3)]' : 'shadow-[0_0_15px_rgba(0,240,255,0.3)]';
               const bgGradient = isResolved ? 'bg-gradient-to-r from-neon-green/5 to-transparent' : isEscalated ? 'bg-gradient-to-r from-neon-pink/10 to-transparent' : isActive ? 'bg-gradient-to-r from-yellow-400/10 to-transparent' : 'bg-gradient-to-r from-neon-cyan/5 to-transparent';
 
               return (
@@ -75,11 +77,11 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
                   initial={{ opacity: 0, x: -20, scale: 0.95 }}
                   animate={{ opacity: 1, x: 0, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
-                  transition={{ type: 'spring', stiffness: 300, damping: 25, delay: index * 0.05 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25, delay: index * 0.1 }}
                   className="relative pl-12"
                 >
                   {/* Timeline Node */}
-                  <div className={`absolute left-[-1.5rem] top-4 w-4 h-4 rounded-full border-2 bg-cyber-bg z-10 ${statusColor.replace('text-', 'border-')} shadow-[0_0_10px_currentColor] flex items-center justify-center`}>
+                  <div className={`absolute left-[-1.5rem] top-4 w-4 h-4 rounded-full border-2 bg-cyber-bg z-10 ${statusColor.replace('text-', 'border-')} ${glowEffect} flex items-center justify-center`}>
                     {isRecovering && <span className="w-2 h-2 rounded-full bg-neon-cyan animate-ping"></span>}
                   </div>
 
@@ -103,18 +105,17 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
                         </div>
                       </div>
                       
-                      <span className="bg-red-950/40 text-red-400 border border-red-500/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
+                      <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+                        inc.severity === 'Minor' ? 'bg-neon-cyan/10 text-neon-cyan border-neon-cyan/20' :
+                        inc.severity === 'Major' ? 'bg-yellow-400/10 text-yellow-400 border-yellow-400/20' :
+                        inc.status === 'Escalated' ? 'bg-neon-purple/10 text-neon-purple border-neon-purple/20' :
+                        'bg-neon-pink/10 text-neon-pink border-neon-pink/20'
+                      }`}>
                         {inc.severity}
                       </span>
                     </div>
                     
-                    {/* Root Cause Analysis */}
-                    <div className="bg-black/40 border border-white/5 p-3 rounded-lg mb-4">
-                      <h4 className="text-[10px] font-bold text-neon-purple mb-1 uppercase tracking-widest flex items-center">
-                        <BrainCircuit size={12} className="mr-1" /> Groq AI Analysis
-                      </h4>
-                      <p className="text-sm text-gray-300 leading-relaxed font-sans">{inc.root_cause}</p>
-                    </div>
+                    {/* AI Reasoning trace will be below */}
                     
                     {/* Actions and Status */}
                     <div className="flex justify-between items-end">
@@ -134,14 +135,28 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
                       {/* Dynamic Action Buttons */}
                       <div className="shrink-0">
                         {isResolved ? (
-                          <div className="flex items-center space-x-2 text-neon-green bg-neon-green/10 px-4 py-2 rounded-lg border border-neon-green/20">
-                            <CheckCircle size={16} />
-                            <span className="text-xs font-bold tracking-wider uppercase">Resolved</span>
+                          <div className="flex items-center space-x-2 text-neon-green bg-neon-green/10 px-4 py-2 rounded-lg border border-neon-green/20 relative overflow-hidden">
+                            <div className="absolute inset-0 bg-neon-green/20 animate-pulse"></div>
+                            <CheckCircle size={16} className="relative z-10 drop-shadow-[0_0_8px_rgba(0,255,102,0.8)]" />
+                            <span className="text-xs font-bold tracking-wider uppercase relative z-10 drop-shadow-[0_0_8px_rgba(0,255,102,0.8)]">Resolved</span>
                           </div>
                         ) : isRecovering ? (
                           <div className="flex items-center space-x-2 text-neon-cyan bg-neon-cyan/10 px-4 py-2 rounded-lg border border-neon-cyan/20">
-                            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                            <span className="text-xs font-bold tracking-wider uppercase">Recovering...</span>
+                            <ShieldAlert size={16} className="animate-pulse drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]" />
+                            <svg className="animate-spin h-4 w-4 drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                            <span className="text-xs font-bold tracking-wider uppercase">Validating...</span>
+                          </div>
+                        ) : isEscalated ? (
+                          <div className="flex items-center space-x-2 text-neon-pink bg-neon-pink/10 px-4 py-2 rounded-lg border border-neon-pink/20">
+                            <AlertOctagon size={16} className="drop-shadow-[0_0_8px_rgba(255,0,85,0.8)]" />
+                            <span className="text-xs font-bold tracking-wider uppercase drop-shadow-[0_0_8px_rgba(255,0,85,0.8)]">Action Failed</span>
+                          </div>
+                        ) : (isActive && !inc.executed_action && inc.action_status?.includes("Requires Human")) ? (
+                          <div className="flex items-center space-x-2">
+                            <button onClick={() => onHeal(inc.incident_id)} className="flex items-center space-x-1.5 text-neon-green bg-neon-green/10 hover:bg-neon-green/20 px-3 py-1.5 rounded border border-neon-green/30 transition-all shadow-[0_0_10px_rgba(0,255,102,0.1)] hover:shadow-[0_0_15px_rgba(0,255,102,0.4)]">
+                              <CheckCircle size={14} />
+                              <span className="text-[10px] font-bold tracking-wider uppercase">Approve Fix</span>
+                            </button>
                           </div>
                         ) : isActive && !inc.executed_action ? (
                           <button 
@@ -151,11 +166,6 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
                             <Zap size={14} />
                             <span className="text-xs font-bold tracking-wider uppercase">Heal System</span>
                           </button>
-                        ) : isEscalated ? (
-                          <div className="flex items-center space-x-2 text-neon-pink bg-neon-pink/10 px-4 py-2 rounded-lg border border-neon-pink/20">
-                            <AlertOctagon size={16} />
-                            <span className="text-xs font-bold tracking-wider uppercase">Escalated</span>
-                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -181,6 +191,9 @@ export default function IncidentTimeline({ incidents, onHeal, onReplay }) {
                         </div>
                       </div>
                     )}
+
+                    {/* Autonomous Decision Trace Toggle */}
+                    <AutonomousDecisionTrace incident={inc} />
 
                     {/* Replay Button for historical investigation */}
                     {isResolved && (

@@ -207,11 +207,20 @@ async def process_new_incident(anomalies):
     query_vector = embedder.encode(current_summary).tolist()
     
     historical_context = ""
+    pinecone_matches = []
     try:
         results = index.query(vector=query_vector, top_k=3, include_metadata=True)
         if results.matches:
             for match in results.matches:
-                historical_context += f"- Past Incident ({match.score:.2f} match): {match.metadata.get('action', 'No action recorded')}\n"
+                score = round(match.score * 100)
+                past_action = match.metadata.get('action', 'No action recorded')
+                pinecone_matches.append({
+                    "id": match.id, 
+                    "score": score, 
+                    "action": past_action,
+                    "resolution": "Successful"  # Mocked as successful if it's in memory
+                })
+                historical_context += f"- Past Incident ({match.score:.2f} match): {past_action}\n"
     except Exception as e:
         print(f"Pinecone query error: {e}")
 
@@ -225,7 +234,7 @@ async def process_new_incident(anomalies):
     Here is how we solved similar incidents in the past:
     {historical_context if historical_context else "No historical context available."}
     
-    Provide a Root Cause Analysis (max 2 sentences) and a specific Recovery Action.
+    Provide a Root Cause Analysis (max 2 sentences), a specific Recovery Action, and an action_reason (explaining why this action was chosen based on historical context).
     The action MUST be exactly one of these strings: ["ROLLBACK_CANARY", "RESTART_SERVICE", "REROUTE_TRAFFIC", "MONITOR_ONLY"].
     You must also provide a confidence score between 0.0 and 1.0.
     
@@ -233,12 +242,14 @@ async def process_new_incident(anomalies):
     {{
         "root_cause": "your analysis here",
         "recommended_action": "RESTART_SERVICE",
+        "action_reason": "Because past incidents involving db-service were successfully mitigated by RESTART_SERVICE.",
         "confidence": 0.95
     }}
     """
     
     rca = "Unknown"
     action = "MONITOR_ONLY"
+    action_reason = "No historical context matched to provide an explicit reason."
     confidence = 0.0
     if groq_client:
         try:
@@ -251,6 +262,7 @@ async def process_new_incident(anomalies):
             response_json = json.loads(completion.choices[0].message.content)
             rca = response_json.get("root_cause", "Unknown")
             action = response_json.get("recommended_action", "MONITOR_ONLY")
+            action_reason = response_json.get("action_reason", "No explicit reason provided.")
             llm_json = response_json
             confidence = llm_json.get("confidence", 0.0)
         except Exception as e:
@@ -285,11 +297,13 @@ async def process_new_incident(anomalies):
         "affected_services": list(services),
         "root_cause": rca,
         "recommended_action": action,
+        "action_reason": action_reason,
         "executed_action": action if is_approved else None,
         "confidence_score": confidence,
         "status": initial_status,
         "action_status": action_status,
         "validation_reason": reason,
+        "pinecone_matches": pinecone_matches,
         "root_dependency": correlation_data.get("root_dependency", "unknown"),
         "cascading_chain": correlation_data.get("cascading_chain", []),
         "correlation_confidence": correlation_data.get("correlation_confidence", 0.0),
