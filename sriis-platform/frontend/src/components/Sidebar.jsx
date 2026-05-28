@@ -1,18 +1,26 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, AlertCircle, PlayCircle, BrainCircuit, Activity, Settings, Terminal, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutDashboard, AlertCircle, PlayCircle, BrainCircuit, Activity, Settings, Terminal, ShieldAlert, ShieldCheck, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'incidents', label: 'Incidents', icon: AlertCircle },
-  { id: 'replay', label: 'Replay Center', icon: PlayCircle },
-  { id: 'intelligence', label: 'AI Intelligence', icon: BrainCircuit },
-  { id: 'canary', label: 'Canary Monitor', icon: Activity },
-  { id: 'simulation', label: 'Simulation', icon: Terminal },
+  { id: 'network-traffic-monitor', label: 'Network Traffic Monitor', icon: Activity },
+  { id: 'deployment-health', label: 'Deployment Health (Canary V2)', icon: ShieldCheck },
+  { id: 'live-blast-radius-topology', label: 'Live Blast Radius Topology', icon: BrainCircuit },
+  { id: 'global-telemetry-feed', label: 'Global Telemetry Feed', icon: Terminal },
+  { id: 'incident-intelligence-timeline', label: 'Incident Intelligence Timeline', icon: AlertCircle },
 ];
 
 export default function Sidebar({ activeRoute, setActiveRoute, isConnected = true, activeIncidentsCount = 0, onBackToLanding }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [activeScrollItem, setActiveScrollItem] = useState(navItems[0].id);
+
+  const scrollToSection = (id) => {
+    setActiveScrollItem(id);
+    const element = document.getElementById(id);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
 
   return (
     <motion.div 
@@ -29,7 +37,10 @@ export default function Sidebar({ activeRoute, setActiveRoute, isConnected = tru
       </button>
 
       {/* Logo Area */}
-      <div className="p-6 flex items-center space-x-3 border-b border-white/5 h-20 shrink-0 overflow-hidden">
+      <button 
+        onClick={() => scrollToSection('dashboard-top')}
+        className="w-full p-6 flex items-center space-x-3 border-b border-white/5 h-20 shrink-0 overflow-hidden hover:bg-white/5 transition-colors cursor-pointer text-left"
+      >
         <ShieldAlert className="text-neon-cyan shrink-0" size={28} />
         {!collapsed && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="whitespace-nowrap">
@@ -37,28 +48,17 @@ export default function Sidebar({ activeRoute, setActiveRoute, isConnected = tru
             <p className="text-[10px] text-gray-400 uppercase tracking-widest font-mono">Autonomous Core</p>
           </motion.div>
         )}
-      </div>
+      </button>
 
       {/* Navigation */}
       <div className="flex-1 py-6 px-3 flex flex-col space-y-2 overflow-y-auto overflow-x-hidden scrollbar-hide">
-        
-        {/* Back to Landing Page Button */}
-        <button
-          onClick={onBackToLanding}
-          className="flex items-center px-3 py-3 rounded-lg text-neon-purple hover:bg-neon-purple/10 hover:shadow-[0_0_15px_rgba(176,38,255,0.2)] transition-all mb-4 border border-transparent hover:border-neon-purple/30 group"
-          title={collapsed ? "Exit to Landing Page" : ""}
-        >
-          <ChevronLeft size={22} className="shrink-0 group-hover:text-white transition-colors" />
-          {!collapsed && <span className="ml-3 font-medium font-mono text-xs uppercase tracking-widest whitespace-nowrap group-hover:text-white transition-colors">Exit Command</span>}
-        </button>
-
         {navItems.map((item) => {
-          const isActive = activeRoute === item.id;
+          const isActive = activeScrollItem === item.id;
           const Icon = item.icon;
           return (
             <button
               key={item.id}
-              onClick={() => setActiveRoute(item.id)}
+              onClick={() => scrollToSection(item.id)}
               className={`flex items-center px-3 py-3 rounded-lg transition-all relative group ${
                 isActive ? 'text-neon-cyan' : 'text-gray-400 hover:text-gray-200 hover:bg-white/5'
               }`}
@@ -75,7 +75,7 @@ export default function Sidebar({ activeRoute, setActiveRoute, isConnected = tru
               <Icon size={22} className={`shrink-0 relative z-10 ${isActive ? 'drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]' : ''}`} />
               {!collapsed && (
                 <motion.span 
-                  className="ml-3 font-medium relative z-10 whitespace-nowrap"
+                  className="ml-3 font-medium relative z-10 whitespace-normal text-left text-xs uppercase tracking-widest"
                   initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 >
                   {item.label}

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { BrainCircuit, Activity, ShieldCheck, ShieldAlert, Cpu, WifiOff } from 'lucide-react';
+import { BrainCircuit, Activity, ShieldCheck, ShieldAlert, Cpu, WifiOff, ChevronLeft } from 'lucide-react';
 
-export default function Topbar({ isConnected = true }) {
+export default function Topbar({ isConnected = true, onBackToLanding }) {
   const [latency, setLatency] = useState(12);
 
   useEffect(() => {
@@ -16,16 +16,18 @@ export default function Topbar({ isConnected = true }) {
     return () => clearInterval(interval);
   }, [isConnected]);
   return (
-    <div className="h-16 border-b border-white/5 glass-panel flex items-center justify-between px-6 sticky top-0 z-40 shrink-0">
+    <div className="h-20 border-b border-white/5 glass-panel flex items-center justify-between px-6 sticky top-0 z-40 shrink-0">
       
-      {/* Search / Breadcrumb (Simulated) */}
+      {/* Exit Command Button */}
       <div className="flex items-center text-gray-400 text-sm font-mono tracking-wider">
-        <span className="text-neon-cyan font-bold drop-shadow-[0_0_8px_rgba(0,240,255,0.8)]">GLOBAL COMMAND CENTER</span>
-        <span className="mx-4 text-gray-600">|</span>
-        <span className="text-white text-[10px] bg-white/5 px-2 py-1 rounded border border-white/10 flex items-center">
-          <span className="w-1.5 h-1.5 rounded-full bg-neon-cyan animate-pulse mr-2"></span>
-          UTC {new Date().toISOString().substring(11, 16)}
-        </span>
+        <button
+          onClick={onBackToLanding}
+          className="flex items-center px-4 py-2 rounded-lg text-neon-purple hover:bg-neon-purple/10 hover:shadow-[0_0_15px_rgba(176,38,255,0.2)] transition-all border border-transparent hover:border-neon-purple/30 group"
+          title="Exit to Landing Page"
+        >
+          <ChevronLeft size={18} className="mr-2 group-hover:text-white transition-colors" />
+          <span className="font-medium text-xs uppercase tracking-widest group-hover:text-white transition-colors">Exit</span>
+        </button>
       </div>
 
       {/* AI Status Banner */}

@@ -195,13 +195,13 @@ function App() {
       />
       
       <div className="flex-1 flex flex-col overflow-hidden relative">
-        <Topbar isConnected={isConnected} />
+        <Topbar isConnected={isConnected} onBackToLanding={() => setAppView('landing')} />
         
         <main className={`flex-1 overflow-y-auto p-6 scrollbar-hide flex flex-col space-y-6 transition-all duration-700 ${replayIncidentId ? 'blur-md opacity-30 pointer-events-none grayscale sepia-[.2] hue-rotate-[320deg]' : ''}`}>
           {activeRoute === 'dashboard' ? (
             <>
               {/* Row 1: KPI Metrics (Hardware + AI) */}
-              <div className="flex flex-col space-y-4 w-full">
+              <div id="dashboard-top" className="flex flex-col space-y-4 w-full">
                 <KPICards metrics={metrics} incidents={incidents} />
                 <DashboardMetrics systemStatus={canaryMetrics} incidents={incidents} />
               </div>
@@ -219,7 +219,7 @@ function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 shrink-0">
                 
                 {/* Traffic Monitor */}
-                <div className="glass-panel border border-white/5 rounded-xl p-5 h-72">
+                <div id="network-traffic-monitor" className="glass-panel border border-white/5 rounded-xl p-5 h-72">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
                     <Activity className="mr-2 text-neon-cyan" size={14} /> Network Traffic Monitor
                   </h3>
@@ -246,7 +246,7 @@ function App() {
                 </div>
 
                 {/* Canary Health Gauges */}
-                <div className="glass-panel border border-white/5 rounded-xl p-5 h-72 flex flex-col">
+                <div id="deployment-health" className="glass-panel border border-white/5 rounded-xl p-5 h-72 flex flex-col">
                   <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center">
                     <ShieldCheck className="mr-2 text-neon-purple" size={14} /> Deployment Health (Canary V2)
                   </h3>
@@ -274,14 +274,14 @@ function App() {
               </div>
 
               {/* Service Graph (Blast Radius Live) */}
-              <div className="glass-panel border border-white/5 rounded-xl overflow-hidden h-[350px] shrink-0 flex flex-col relative">
+              <div id="live-blast-radius-topology" className="glass-panel border border-white/5 rounded-xl overflow-hidden h-[350px] shrink-0 flex flex-col relative">
                  <BlastRadiusGraph activeIncidents={incidents.filter(i => i.status !== 'Resolved')} />
               </div>
 
             </div>
 
             {/* Right Column (Logs) */}
-            <div className="xl:col-span-1 relative min-h-[300px]">
+            <div id="global-telemetry-feed" className="xl:col-span-1 relative min-h-[300px]">
               {/* Live Logs - strictly bounds to the exact height of left column */}
               <div className="absolute inset-0">
                 <LiveLogTerminal logs={logs} />
@@ -291,7 +291,7 @@ function App() {
           </div>
 
           {/* Bottom Section: Incident Timeline (Full Width) */}
-          <div className="flex-1 min-h-[600px] w-full">
+          <div id="incident-intelligence-timeline" className="flex-1 min-h-[600px] w-full">
             <div className="glass-panel border border-white/5 rounded-xl overflow-hidden h-full flex flex-col relative">
               <IncidentTimeline 
                 incidents={incidents} 
@@ -323,14 +323,7 @@ function App() {
           )}
         </main>
         
-        {/* Footer */}
-        <div className="h-8 border-t border-white/5 flex items-center justify-between px-6 shrink-0 bg-black/80 font-mono text-[9px] text-gray-500 uppercase tracking-widest z-40">
-          <span className="flex items-center">
-            <span className="w-1.5 h-1.5 rounded-full bg-neon-green mr-2 animate-pulse"></span>
-            AI CORE ONLINE • VECTOR MEMORY SYNCHRONIZED
-          </span>
-          <span>SRIIS NOC v2.0.0</span>
-        </div>
+        {/* Footer Removed */}
       </div>
     </motion.div>
   );
