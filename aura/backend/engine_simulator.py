@@ -67,9 +67,11 @@ async def simulator_loop():
                     payload["cpu_usage"] = max(10, payload["cpu_usage"] // 2)
 
             try:
-                await client.post(API_URL, json=payload, timeout=2.0)
-            except Exception:
-                pass
+                from api.routes_logs import LogEntry, ingest_log
+                log_entry = LogEntry(**payload)
+                await ingest_log(log_entry)
+            except Exception as e:
+                print(f"Simulator error: {e}")
             
             # Traffic surge simulation
             sleep_time = 0.01 if simulation_state["active_failure"] == "traffic-surge" else random.uniform(0.02, 0.08)
