@@ -7,7 +7,6 @@ scikit-learn
 pinecone
 python-dotenv
 pydantic
-sentence-transformers
 groq
 langchain
 langchain-groq
