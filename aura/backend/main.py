@@ -7,6 +7,14 @@ This module wires all the disparate architectural components together:
 - Acts as the ASGI server target (main:socket_app)
 """
 
+import os
+import time
+
+# Force the server to run on Indian Standard Time (IST) 
+# so all generated incidents display the correct local time instead of UTC.
+if hasattr(time, 'tzset'):
+    os.environ['TZ'] = 'Asia/Kolkata'
+    time.tzset()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import asyncio
