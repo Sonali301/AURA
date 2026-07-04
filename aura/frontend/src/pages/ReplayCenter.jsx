@@ -11,7 +11,7 @@ const ReplayCenter = ({ incidentId, onClose }) => {
   const socketRef = useRef(null);
 
   useEffect(() => {
-    socketRef.current = io('http://localhost:8000/replay');
+    socketRef.current = io('https://aura-api-uhdu.onrender.com/replay');
 
     socketRef.current.on('connect', () => {
       socketRef.current.emit('start_replay', { incident_id: incidentId, speed: replaySpeed });

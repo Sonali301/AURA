@@ -18,7 +18,7 @@ export function useSystemState() {
   useEffect(() => {
     let interval;
     let isMounted = true;
-    const socket = io('http://localhost:8000');
+    const socket = io('https://aura-api-uhdu.onrender.com');
 
     const hydrateState = async () => {
       try {

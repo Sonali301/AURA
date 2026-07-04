@@ -18,7 +18,7 @@ export default function SimulationControlPanel() {
 
   const simulateFailure = (scenario) => {
     setActiveSimulation(scenario);
-    fetch(`http://localhost:8000/api/simulate/${scenario}`, {
+    fetch(`https://aura-api-uhdu.onrender.com/api/simulate/${scenario}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ severity, duration })

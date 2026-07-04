@@ -1,4 +1,4 @@
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = 'https://aura-api-uhdu.onrender.com/api';
 
 export const fetchIncidents = async () => {
   const res = await fetch(`${API_BASE}/incidents`);
