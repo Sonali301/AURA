@@ -120,7 +120,7 @@ async def trigger_agentic_workflow(logs):
         "risk_level": final_state.get("risk_level", "UNKNOWN"),
         "validation_reason": block_reason,
         "timeline_events": [
-            {"time": datetime.datetime.now().strftime("%I:%M %p"), "event": f"Incident generated: {rca}"}
+            {"time": (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p"), "event": f"Incident generated: {rca}"}
         ]
     }
     

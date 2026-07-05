@@ -62,7 +62,7 @@ class RecoveryAgent:
         
         # 1. Announce execution started to Dashboard
         event_text = f"Execution started: {action}"
-        event_time = datetime.datetime.now().strftime("%I:%M %p")
+        event_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p")
         await manager.broadcast_recovery_event(incident_id, event_text, event_time)
         
         # Update Database status to Recovering
@@ -79,7 +79,7 @@ class RecoveryAgent:
         if action == "RESTART_SERVICE":
             for svc in services:
                 cls.infrastructure_state["service_health"][svc] = "RESTARTING"
-                await manager.broadcast_recovery_event(incident_id, f"Simulating restart of {svc}...", datetime.datetime.now().strftime("%I:%M %p"))
+                await manager.broadcast_recovery_event(incident_id, f"Simulating restart of {svc}...", (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p"))
                 
             await cls.persist_state(db)
             await asyncio.sleep(4) # Simulate time taken for downtime/reboot
@@ -91,7 +91,7 @@ class RecoveryAgent:
             await cls.persist_state(db)
                 
         elif action == "ROLLBACK_CANARY":
-            await manager.broadcast_recovery_event(incident_id, "Rerouting 100% traffic to stable environment...", datetime.datetime.now().strftime("%I:%M %p"))
+            await manager.broadcast_recovery_event(incident_id, "Rerouting 100% traffic to stable environment...", (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p"))
             # Shift traffic off the broken canary
             cls.infrastructure_state["traffic_distribution"]["stable"] = 100
             cls.infrastructure_state["traffic_distribution"]["canary"] = 0
@@ -105,7 +105,7 @@ class RecoveryAgent:
             
         # 3. Transition to Validating phase
         val_event = "Action executed. Entering 15s validation phase..."
-        val_time = datetime.datetime.now().strftime("%I:%M %p")
+        val_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p")
         await manager.broadcast_recovery_event(incident_id, val_event, val_time)
         
         await db.incidents.update_one(
@@ -143,7 +143,7 @@ class RecoveryAgent:
             validation_reason = "Error rate still elevated after recovery action."
             final_event = f"Validation failed! {validation_reason} {recent_anomalies} anomalies still detecting."
             
-        final_time = datetime.datetime.now().strftime("%I:%M %p")
+        final_time = (datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)).strftime("%I:%M %p")
         await manager.broadcast_recovery_event(incident_id, final_event, final_time)
 
         # Finalize incident DB record

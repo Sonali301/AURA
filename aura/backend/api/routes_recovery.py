@@ -6,7 +6,7 @@ overriding the AI's autonomous decisions (Manual Healing).
 
 from fastapi import APIRouter
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from database.mongodb import db_manager
 from api.websocket_manager import manager
 import engine_simulator
@@ -47,7 +47,7 @@ async def manual_heal_incident(incident_id: str, payload: dict = None):
         return {"error": "Incident not found"}
         
     approval_user = payload.get("approval_user", "Admin") if payload else "Admin"
-    event_time = datetime.now().strftime("%I:%M %p")
+    event_time = (datetime.utcnow() + timedelta(hours=5, minutes=30)).strftime("%I:%M %p")
     event_text = f"Manual Execution Approved by {approval_user}"
     
     # Log manual intervention
